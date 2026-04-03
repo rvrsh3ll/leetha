@@ -1,0 +1,896 @@
+{
+  "services": {
+    "_airplay._tcp": {
+      "category": "media_player",
+      "vendor": null,
+      "platform": null,
+      "certainty": 40
+    },
+    "_raop._tcp": {
+      "category": "smart_speaker",
+      "vendor": null,
+      "platform": null,
+      "certainty": 40
+    },
+    "_afpovertcp._tcp": {
+      "category": "workstation",
+      "vendor": "Apple",
+      "platform": "macOS",
+      "certainty": 85
+    },
+    "_homekit._tcp": {
+      "category": "smart_home",
+      "vendor": null,
+      "platform": null,
+      "certainty": 85
+    },
+    "_hap._tcp": {
+      "category": "smart_home",
+      "vendor": null,
+      "platform": null,
+      "certainty": 85
+    },
+    "_companion-link._tcp": {
+      "category": "mobile",
+      "vendor": "Apple",
+      "platform": "iOS",
+      "certainty": 90
+    },
+    "_apple-mobdev2._tcp": {
+      "category": "mobile",
+      "vendor": "Apple",
+      "platform": "iOS",
+      "certainty": 90
+    },
+    "_remotepairing._tcp": {
+      "category": "mobile",
+      "vendor": "Apple",
+      "platform": "iOS",
+      "certainty": 85
+    },
+    "_rdlink._tcp": {
+      "category": "mobile",
+      "vendor": "Apple",
+      "platform": "iOS",
+      "certainty": 80
+    },
+    "_daap._tcp": {
+      "category": "workstation",
+      "vendor": null,
+      "platform": null,
+      "certainty": 60
+    },
+    "_touch-able._tcp": {
+      "category": "mobile",
+      "vendor": "Apple",
+      "platform": "iOS",
+      "certainty": 85
+    },
+    "_mediaremotetv._tcp": {
+      "category": "media_player",
+      "vendor": "Apple",
+      "platform": "tvOS",
+      "certainty": 90
+    },
+    "_apple-pairable._tcp": {
+      "category": "mobile",
+      "vendor": "Apple",
+      "platform": "iOS",
+      "certainty": 85
+    },
+    "_apple-mobdev._tcp": {
+      "category": "mobile",
+      "vendor": "Apple",
+      "platform": "iOS",
+      "certainty": 85
+    },
+    "_airdrop._tcp": {
+      "category": "mobile",
+      "vendor": "Apple",
+      "platform": "iOS/macOS",
+      "certainty": 88
+    },
+    "_apple-midi._udp": {
+      "category": "workstation",
+      "vendor": "Apple",
+      "platform": "macOS",
+      "certainty": 75
+    },
+    "_googlecast._tcp": {
+      "category": "smart_speaker",
+      "vendor": "Google",
+      "platform": "Cast OS",
+      "certainty": 90
+    },
+    "_googlerpc._tcp": {
+      "category": "smart_speaker",
+      "vendor": "Google",
+      "platform": "Cast OS",
+      "certainty": 90
+    },
+    "_googlezone._tcp": {
+      "category": "smart_speaker",
+      "vendor": "Google",
+      "platform": "Cast OS",
+      "certainty": 85
+    },
+    "_googlehomedevice._tcp": {
+      "category": "smart_speaker",
+      "vendor": "Google",
+      "platform": "Cast OS",
+      "certainty": 92
+    },
+    "_androidtvremote._tcp": {
+      "category": "smart_tv",
+      "vendor": null,
+      "platform": "Android TV",
+      "certainty": 85
+    },
+    "_androidtvremote2._tcp": {
+      "category": "smart_tv",
+      "vendor": null,
+      "platform": "Android TV",
+      "certainty": 85
+    },
+    "_android._tcp": {
+      "category": "mobile",
+      "vendor": null,
+      "platform": "Android",
+      "certainty": 80
+    },
+    "_printer._tcp": {
+      "category": "printer",
+      "vendor": null,
+      "platform": null,
+      "certainty": 90
+    },
+    "_ipp._tcp": {
+      "category": "printer",
+      "vendor": null,
+      "platform": null,
+      "certainty": 90
+    },
+    "_ipps._tcp": {
+      "category": "printer",
+      "vendor": null,
+      "platform": null,
+      "certainty": 90
+    },
+    "_pdl-datastream._tcp": {
+      "category": "printer",
+      "vendor": null,
+      "platform": null,
+      "certainty": 85
+    },
+    "_scanner._tcp": {
+      "category": "scanner",
+      "vendor": null,
+      "platform": null,
+      "certainty": 90
+    },
+    "_uscan._tcp": {
+      "category": "scanner",
+      "vendor": null,
+      "platform": null,
+      "certainty": 85
+    },
+    "_privet._tcp": {
+      "category": "printer",
+      "vendor": null,
+      "platform": null,
+      "certainty": 80
+    },
+    "_smb._tcp": {
+      "category": "workstation",
+      "vendor": null,
+      "platform": null,
+      "certainty": 70
+    },
+    "_nfs._tcp": {
+      "category": "nas",
+      "vendor": null,
+      "platform": null,
+      "certainty": 80
+    },
+    "_afpovertcp._tcp.": {
+      "category": "workstation",
+      "vendor": "Apple",
+      "platform": "macOS",
+      "certainty": 85
+    },
+    "_ftp._tcp": {
+      "category": "server",
+      "vendor": null,
+      "platform": null,
+      "certainty": 65
+    },
+    "_webdav._tcp": {
+      "category": "nas",
+      "vendor": null,
+      "platform": null,
+      "certainty": 75
+    },
+    "_spotify-connect._tcp": {
+      "category": "smart_speaker",
+      "vendor": null,
+      "platform": null,
+      "certainty": 80
+    },
+    "_sonos._tcp": {
+      "category": "smart_speaker",
+      "vendor": "Sonos",
+      "platform": null,
+      "certainty": 95
+    },
+    "_plex._tcp": {
+      "category": "media_server",
+      "vendor": "Plex",
+      "platform": null,
+      "certainty": 90
+    },
+    "_roku._tcp": {
+      "category": "smart_tv",
+      "vendor": "Roku",
+      "platform": null,
+      "certainty": 95
+    },
+    "_amazontv._tcp": {
+      "category": "smart_tv",
+      "vendor": "Amazon",
+      "platform": "Fire OS",
+      "certainty": 90
+    },
+    "_ssh._tcp": {
+      "category": "server",
+      "vendor": null,
+      "platform": null,
+      "certainty": 65
+    },
+    "_sftp-ssh._tcp": {
+      "category": "server",
+      "vendor": null,
+      "platform": null,
+      "certainty": 65
+    },
+    "_rfb._tcp": {
+      "category": "workstation",
+      "vendor": null,
+      "platform": null,
+      "certainty": 70
+    },
+    "_http._tcp": {
+      "category": "server",
+      "vendor": null,
+      "platform": null,
+      "certainty": 50
+    },
+    "_https._tcp": {
+      "category": "server",
+      "vendor": null,
+      "platform": null,
+      "certainty": 50
+    },
+    "_http-alt._tcp": {
+      "category": "server",
+      "vendor": null,
+      "platform": null,
+      "certainty": 45
+    },
+    "_hue._tcp": {
+      "category": "smart_home",
+      "vendor": "Philips",
+      "platform": null,
+      "certainty": 95
+    },
+    "_wemo._tcp": {
+      "category": "smart_home",
+      "vendor": "Belkin",
+      "platform": null,
+      "certainty": 90
+    },
+    "_smartthings._tcp": {
+      "category": "smart_home",
+      "vendor": "Samsung",
+      "platform": null,
+      "certainty": 90
+    },
+    "_hass._tcp": {
+      "category": "smart_home",
+      "vendor": null,
+      "platform": "Home Assistant",
+      "certainty": 85
+    },
+    "_workstation._tcp": {
+      "category": "workstation",
+      "vendor": null,
+      "platform": null,
+      "certainty": 60
+    },
+    "_device-info._tcp": {
+      "category": "unknown",
+      "vendor": null,
+      "platform": null,
+      "certainty": 40
+    },
+    "_sleep-proxy._udp": {
+      "category": "network",
+      "vendor": "Apple",
+      "platform": null,
+      "certainty": 70
+    },
+    "_matter._tcp": {
+      "category": "smart_home",
+      "vendor": null,
+      "platform": null,
+      "certainty": 80
+    },
+    "_thread._tcp": {
+      "category": "smart_home",
+      "vendor": null,
+      "platform": null,
+      "certainty": 75
+    },
+    "_esphomelib._tcp": {
+      "category": "iot",
+      "vendor": null,
+      "platform": "ESPHome",
+      "certainty": 85
+    },
+    "_tasmota._tcp": {
+      "category": "iot",
+      "vendor": null,
+      "platform": "Tasmota",
+      "certainty": 85
+    },
+    "_postgresql._tcp": {
+      "category": "server",
+      "vendor": null,
+      "platform": null,
+      "certainty": 80
+    },
+    "_mysql._tcp": {
+      "category": "server",
+      "vendor": null,
+      "platform": null,
+      "certainty": 80
+    },
+    "_mongodb._tcp": {
+      "category": "server",
+      "vendor": null,
+      "platform": null,
+      "certainty": 80
+    },
+    "_xbox._tcp": {
+      "category": "game_console",
+      "vendor": "Microsoft",
+      "platform": "Xbox",
+      "certainty": 95
+    },
+    "_xbone._tcp": {
+      "category": "game_console",
+      "vendor": "Microsoft",
+      "platform": "Xbox",
+      "certainty": 90
+    },
+    "_playstation._tcp": {
+      "category": "game_console",
+      "vendor": "Sony",
+      "platform": "PlayStation",
+      "certainty": 95
+    },
+    "_amzn-wplay._tcp": {
+      "category": "smart_speaker",
+      "vendor": "Amazon",
+      "platform": "Fire OS",
+      "certainty": 90
+    },
+    "_octoprint._tcp": {
+      "category": "3d_printer",
+      "vendor": null,
+      "platform": "Linux",
+      "certainty": 85
+    },
+    "_mqtt._tcp": {
+      "category": "iot",
+      "vendor": null,
+      "platform": null,
+      "certainty": 60
+    },
+    "_coap._udp": {
+      "category": "iot",
+      "vendor": null,
+      "platform": null,
+      "certainty": 60
+    },
+    "_proxmox._tcp": {
+      "category": "hypervisor",
+      "vendor": "Proxmox",
+      "platform": "Proxmox VE",
+      "certainty": 90
+    },
+    "_omv._tcp": {
+      "category": "nas",
+      "vendor": "OpenMediaVault",
+      "platform": "Linux",
+      "certainty": 85
+    }
+  },
+  "names": [
+    {
+      "match": ".*iPhone.*",
+      "category": "mobile",
+      "vendor": "Apple",
+      "platform": "iOS",
+      "certainty": 95
+    },
+    {
+      "match": ".*iPad.*",
+      "category": "tablet",
+      "vendor": "Apple",
+      "platform": "iPadOS",
+      "certainty": 95
+    },
+    {
+      "match": ".*MacBook.*",
+      "category": "laptop",
+      "vendor": "Apple",
+      "platform": "macOS",
+      "certainty": 95
+    },
+    {
+      "match": ".*iMac.*",
+      "category": "workstation",
+      "vendor": "Apple",
+      "platform": "macOS",
+      "certainty": 95
+    },
+    {
+      "match": ".*Mac[\\s\\-]?mini.*",
+      "category": "workstation",
+      "vendor": "Apple",
+      "platform": "macOS",
+      "certainty": 95
+    },
+    {
+      "match": ".*Mac[\\s\\-]?Pro.*",
+      "category": "workstation",
+      "vendor": "Apple",
+      "platform": "macOS",
+      "certainty": 95
+    },
+    {
+      "match": ".*Mac[\\s\\-]?Studio.*",
+      "category": "workstation",
+      "vendor": "Apple",
+      "platform": "macOS",
+      "certainty": 95
+    },
+    {
+      "match": ".*Apple[\\s\\-]?TV.*",
+      "category": "smart_tv",
+      "vendor": "Apple",
+      "platform": "tvOS",
+      "certainty": 95
+    },
+    {
+      "match": ".*HomePod.*",
+      "category": "smart_speaker",
+      "vendor": "Apple",
+      "platform": "tvOS",
+      "certainty": 95
+    },
+    {
+      "match": ".*AirPort.*",
+      "category": "access_point",
+      "vendor": "Apple",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Time[\\s\\-]?Capsule.*",
+      "category": "nas",
+      "vendor": "Apple",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Apple[\\s\\-]?Watch.*",
+      "category": "wearable",
+      "vendor": "Apple",
+      "platform": "watchOS",
+      "certainty": 95
+    },
+    {
+      "match": ".*AirPods.*",
+      "category": "wireless_earbuds",
+      "vendor": "Apple",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Chromecast.*",
+      "category": "smart_tv",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 95
+    },
+    {
+      "match": ".*Google[\\s\\-]?Home.*",
+      "category": "smart_speaker",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 95
+    },
+    {
+      "match": ".*Google[\\s\\-]?Nest.*",
+      "category": "smart_home",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Nest[\\s\\-]?Hub.*",
+      "category": "smart_speaker",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Nest[\\s\\-]?Mini.*",
+      "category": "smart_speaker",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Nest[\\s\\-]?Audio.*",
+      "category": "smart_speaker",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Pixel.*",
+      "category": "mobile",
+      "vendor": "Google",
+      "platform": "Android",
+      "certainty": 85
+    },
+    {
+      "match": ".*Google[\\s\\-]?TV.*",
+      "category": "smart_tv",
+      "vendor": "Google",
+      "platform": "Google TV",
+      "certainty": 90
+    },
+    {
+      "match": ".*Nest[\\s\\-]?Wifi.*",
+      "category": "router",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Nest[\\s\\-]?Cam.*",
+      "category": "camera",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Nest[\\s\\-]?Doorbell.*",
+      "category": "doorbell",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Nest[\\s\\-]?Thermostat.*",
+      "category": "thermostat",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Nest[\\s\\-]?Protect.*",
+      "category": "smoke_detector",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*Pixel[\\s\\-]?Tablet.*",
+      "category": "tablet",
+      "vendor": "Google",
+      "platform": "Android",
+      "certainty": 90
+    },
+    {
+      "match": ".*Pixel[\\s\\-]?Watch.*",
+      "category": "wearable",
+      "vendor": "Google",
+      "platform": "Wear OS",
+      "certainty": 90
+    },
+    {
+      "match": ".*Pixel[\\s\\-]?Buds.*",
+      "category": "wireless_earbuds",
+      "vendor": "Google",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*Echo.*",
+      "category": "smart_speaker",
+      "vendor": "Amazon",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Fire[\\s\\-]?TV.*",
+      "category": "smart_tv",
+      "vendor": "Amazon",
+      "platform": "Fire OS",
+      "certainty": 90
+    },
+    {
+      "match": ".*Fire[\\s\\-]?Stick.*",
+      "category": "smart_tv",
+      "vendor": "Amazon",
+      "platform": "Fire OS",
+      "certainty": 90
+    },
+    {
+      "match": ".*Kindle.*",
+      "category": "tablet",
+      "vendor": "Amazon",
+      "platform": "Fire OS",
+      "certainty": 85
+    },
+    {
+      "match": ".*Alexa.*",
+      "category": "smart_speaker",
+      "vendor": "Amazon",
+      "platform": null,
+      "certainty": 80
+    },
+    {
+      "match": ".*Ring.*",
+      "category": "camera",
+      "vendor": "Amazon",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*Samsung[\\s\\-]?TV.*",
+      "category": "smart_tv",
+      "vendor": "Samsung",
+      "platform": "Tizen",
+      "certainty": 90
+    },
+    {
+      "match": ".*Galaxy.*",
+      "category": "mobile",
+      "vendor": "Samsung",
+      "platform": "Android",
+      "certainty": 80
+    },
+    {
+      "match": ".*Sonos.*",
+      "category": "smart_speaker",
+      "vendor": "Sonos",
+      "platform": null,
+      "certainty": 95
+    },
+    {
+      "match": ".*Roku.*",
+      "category": "smart_tv",
+      "vendor": "Roku",
+      "platform": null,
+      "certainty": 95
+    },
+    {
+      "match": ".*Synology.*",
+      "category": "nas",
+      "vendor": "Synology",
+      "platform": "DSM",
+      "certainty": 95
+    },
+    {
+      "match": ".*DS\\d{3,4}.*",
+      "category": "nas",
+      "vendor": "Synology",
+      "platform": "DSM",
+      "certainty": 85
+    },
+    {
+      "match": ".*QNAP.*",
+      "category": "nas",
+      "vendor": "QNAP",
+      "platform": "QTS",
+      "certainty": 95
+    },
+    {
+      "match": ".*TS-\\d{3,4}.*",
+      "category": "nas",
+      "vendor": "QNAP",
+      "platform": "QTS",
+      "certainty": 80
+    },
+    {
+      "match": ".*HP[\\s\\-]?(LaserJet|OfficeJet|DeskJet|Envy).*",
+      "category": "printer",
+      "vendor": "HP",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*EPSON.*",
+      "category": "printer",
+      "vendor": "Epson",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*Brother.*",
+      "category": "printer",
+      "vendor": "Brother",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*Canon.*MF.*",
+      "category": "printer",
+      "vendor": "Canon",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*Xbox.*",
+      "category": "game_console",
+      "vendor": "Microsoft",
+      "platform": "Xbox",
+      "certainty": 90
+    },
+    {
+      "match": ".*PlayStation.*",
+      "category": "game_console",
+      "vendor": "Sony",
+      "platform": "PlayStation",
+      "certainty": 90
+    },
+    {
+      "match": ".*PS[45].*",
+      "category": "game_console",
+      "vendor": "Sony",
+      "platform": "PlayStation",
+      "certainty": 85
+    },
+    {
+      "match": ".*Nintendo[\\s\\-]?Switch.*",
+      "category": "game_console",
+      "vendor": "Nintendo",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*UniFi.*",
+      "category": "network",
+      "vendor": "Ubiquiti",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*MikroTik.*",
+      "category": "router",
+      "vendor": "MikroTik",
+      "platform": "RouterOS",
+      "certainty": 90
+    },
+    {
+      "match": ".*Netgear.*",
+      "category": "router",
+      "vendor": "Netgear",
+      "platform": null,
+      "certainty": 80
+    },
+    {
+      "match": ".*TP-?Link.*",
+      "category": "router",
+      "vendor": "TP-Link",
+      "platform": null,
+      "certainty": 80
+    },
+    {
+      "match": ".*Asus.*RT-.*",
+      "category": "router",
+      "vendor": "ASUS",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*Linksys.*",
+      "category": "router",
+      "vendor": "Linksys",
+      "platform": null,
+      "certainty": 80
+    },
+    {
+      "match": ".*eero.*",
+      "category": "access_point",
+      "vendor": "Amazon",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*Orbi.*",
+      "category": "access_point",
+      "vendor": "Netgear",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*Hikvision.*",
+      "category": "camera",
+      "vendor": "Hikvision",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Dahua.*",
+      "category": "camera",
+      "vendor": "Dahua",
+      "platform": null,
+      "certainty": 90
+    },
+    {
+      "match": ".*Wyze.*",
+      "category": "camera",
+      "vendor": "Wyze",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*Arlo.*",
+      "category": "camera",
+      "vendor": "Arlo",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*ratgdo.*",
+      "category": "garage_controller",
+      "vendor": "ratgdo",
+      "platform": null,
+      "certainty": 92
+    },
+    {
+      "match": ".*esphome.*",
+      "category": "iot",
+      "vendor": null,
+      "platform": null,
+      "certainty": 80
+    },
+    {
+      "match": ".*tasmota.*",
+      "category": "iot",
+      "vendor": null,
+      "platform": null,
+      "certainty": 80
+    },
+    {
+      "match": ".*shelly.*",
+      "category": "iot",
+      "vendor": "Shelly",
+      "platform": null,
+      "certainty": 85
+    },
+    {
+      "match": ".*wled.*",
+      "category": "smart_light",
+      "vendor": null,
+      "platform": null,
+      "certainty": 80
+    }
+  ]
+}

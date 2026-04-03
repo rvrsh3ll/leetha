@@ -1,0 +1,31 @@
+# Leetha — containerized deployment
+#
+# Usage:
+#   docker compose up -d          Start in background
+#   docker compose logs -f        Follow logs
+#   docker compose exec leetha leetha sync   Update fingerprint databases
+
+services:
+  leetha:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: leetha
+    cap_add:
+      - NET_RAW          # Required for packet capture
+      - NET_ADMIN        # Required for interface enumeration
+    network_mode: host    # Direct access to host network interfaces
+    volumes:
+      - app-storage:/home/appuser/.local/share/leetha
+    environment:
+      - LEETHA_DATA_DIR=/home/appuser/.local/share/leetha
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/stats"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  app-storage:
+    driver: local

@@ -1,0 +1,242 @@
+{
+  "oro": [],
+  "enterprise_ids": {
+    "2": {
+      "manufacturer": "IBM",
+      "device_types": [
+        "server",
+        "mainframe"
+      ]
+    },
+    "9": {
+      "manufacturer": "Cisco",
+      "device_types": [
+        "router",
+        "switch",
+        "firewall",
+        "access_point"
+      ]
+    },
+    "11": {
+      "manufacturer": "HP/HPE",
+      "device_types": [
+        "server",
+        "workstation",
+        "printer"
+      ]
+    },
+    "311": {
+      "manufacturer": "Microsoft",
+      "device_types": [
+        "workstation",
+        "server"
+      ]
+    },
+    "2636": {
+      "manufacturer": "Juniper Networks",
+      "device_types": [
+        "router",
+        "switch",
+        "firewall"
+      ]
+    },
+    "3076": {
+      "manufacturer": "Cisco VPN (Altiga)",
+      "device_types": [
+        "vpn_concentrator"
+      ]
+    },
+    "4413": {
+      "manufacturer": "Aruba/HPE",
+      "device_types": [
+        "access_point",
+        "switch",
+        "controller"
+      ]
+    },
+    "4526": {
+      "manufacturer": "Netgear",
+      "device_types": [
+        "router",
+        "switch",
+        "access_point"
+      ]
+    },
+    "6876": {
+      "manufacturer": "VMware",
+      "device_types": [
+        "virtual_machine"
+      ]
+    },
+    "8072": {
+      "manufacturer": "Net-SNMP",
+      "device_types": [
+        "server",
+        "network"
+      ]
+    },
+    "12356": {
+      "manufacturer": "Fortinet",
+      "device_types": [
+        "firewall",
+        "access_point"
+      ]
+    },
+    "14525": {
+      "manufacturer": "MikroTik",
+      "device_types": [
+        "router",
+        "switch",
+        "access_point"
+      ]
+    },
+    "25461": {
+      "manufacturer": "Palo Alto Networks",
+      "device_types": [
+        "firewall"
+      ]
+    },
+    "41112": {
+      "manufacturer": "Ubiquiti",
+      "device_types": [
+        "access_point",
+        "router",
+        "switch"
+      ]
+    }
+  },
+  "vendor_class": [
+    {
+      "match": "^MSFT\\s+\\d",
+      "category": "workstation",
+      "vendor": "Microsoft",
+      "certainty": "Windows"
+    },
+    {
+      "match": "^dhcpcd",
+      "category": "workstation",
+      "vendor": null,
+      "certainty": "Linux"
+    },
+    {
+      "match": "^udhcp",
+      "category": "router",
+      "vendor": null,
+      "certainty": "Linux (Embedded)"
+    },
+    {
+      "match": "^Cisco\\s",
+      "category": "network",
+      "vendor": "Cisco",
+      "certainty": "IOS"
+    },
+    {
+      "match": "^Juniper",
+      "category": "router",
+      "vendor": "Juniper",
+      "certainty": "JunOS"
+    },
+    {
+      "match": "^Fortinet",
+      "category": "firewall",
+      "vendor": "Fortinet",
+      "certainty": "FortiOS"
+    },
+    {
+      "match": "^MikroTik",
+      "category": "router",
+      "vendor": "MikroTik",
+      "certainty": "RouterOS"
+    },
+    {
+      "match": "^Aruba",
+      "category": "access_point",
+      "vendor": "Aruba",
+      "certainty": "ArubaOS"
+    },
+    {
+      "match": "^(ubnt|UniFi)",
+      "category": "access_point",
+      "vendor": "Ubiquiti",
+      "certainty": null
+    },
+    {
+      "match": "^AAPLBSDPC/",
+      "category": "workstation",
+      "vendor": "Apple",
+      "certainty": "macOS"
+    },
+    {
+      "match": "^android-dhcp",
+      "category": "mobile",
+      "vendor": null,
+      "certainty": "Android"
+    },
+    {
+      "match": "^VMware",
+      "category": "virtual_machine",
+      "vendor": "VMware",
+      "certainty": null
+    },
+    {
+      "match": "^HP\\s+(LaserJet|OfficeJet|DeskJet)",
+      "category": "printer",
+      "vendor": "HP",
+      "certainty": null
+    },
+    {
+      "match": "^EPSON",
+      "category": "printer",
+      "vendor": "Epson",
+      "certainty": null
+    },
+    {
+      "match": "^Canon",
+      "category": "printer",
+      "vendor": "Canon",
+      "certainty": null
+    },
+    {
+      "match": "^Brother",
+      "category": "printer",
+      "vendor": "Brother",
+      "certainty": null
+    },
+    {
+      "match": "^XEROX",
+      "category": "printer",
+      "vendor": "Xerox",
+      "certainty": null
+    },
+    {
+      "match": "^Polycom",
+      "category": "voip_phone",
+      "vendor": "Polycom",
+      "certainty": null
+    },
+    {
+      "match": "^Yealink",
+      "category": "voip_phone",
+      "vendor": "Yealink",
+      "certainty": null
+    },
+    {
+      "match": "^Synology",
+      "category": "nas",
+      "vendor": "Synology",
+      "certainty": "DSM"
+    },
+    {
+      "match": "^QNAP",
+      "category": "nas",
+      "vendor": "QNAP",
+      "certainty": "QTS"
+    }
+  ],
+  "duid_hints": {
+    "1": "DUID-LLT (Link-Layer Address Plus Time)",
+    "2": "DUID-EN (Enterprise Number)",
+    "3": "DUID-LL (Link-Layer Address)",
+    "4": "DUID-UUID (RFC 6355)"
+  }
+}

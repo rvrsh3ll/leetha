@@ -1,0 +1,627 @@
+import { useState, useCallback, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  fetchSettings,
+  updateSettings,
+  applySettings,
+  resetSettings,
+  exportSettings,
+  importSettings,
+  fetchDbInfo,
+  runQuery,
+  clearDatabase,
+  type LeethaSettings,
+} from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import { useTheme, ACCENT_PRESETS } from "@/providers/theme-provider";
+import {
+  Save,
+  RotateCcw,
+  Download,
+  Upload,
+  Trash2,
+  Play,
+  Database,
+  Settings2,
+  Crosshair,
+  AlertTriangle,
+  Copy,
+  HardDrive,
+  Terminal,
+  Palette,
+} from "lucide-react";
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const TABS = [
+  { id: "general", label: "General", icon: Settings2 },
+  { id: "capture", label: "Capture & Probing", icon: Crosshair },
+  { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "database", label: "Database", icon: Database },
+  { id: "console", label: "SQL Console", icon: Terminal },
+  { id: "actions", label: "Import / Export", icon: Download },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
+function ConfirmAction({ trigger, title, description, onConfirm }: {
+  trigger: React.ReactNode; title: string; description: string; onConfirm: () => void;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+          <DialogClose asChild><Button variant="destructive" onClick={onConfirm}>Confirm</Button></DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default function Settings() {
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("general");
+
+  const { data: settings, isLoading } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
+  const { data: dbInfo } = useQuery({ queryKey: ["db-info"], queryFn: fetchDbInfo });
+
+  const [draft, setDraft] = useState<Partial<LeethaSettings>>({});
+  const [restartRequired, setRestartRequired] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const merged = { ...settings, ...draft } as LeethaSettings | undefined;
+  const hasDraft = Object.keys(draft).length > 0;
+
+  const updateField = useCallback((key: string, value: string | number | boolean) => {
+    setDraft((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!hasDraft) { toast.info("No changes to save"); return; }
+    setSaving(true);
+    try {
+      await updateSettings(draft);
+      setDraft({});
+      setRestartRequired(true);
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      toast.success("Settings saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save");
+    } finally { setSaving(false); }
+  }, [draft, hasDraft, queryClient]);
+
+  const handleApply = useCallback(async () => {
+    try { await applySettings(); setRestartRequired(false); toast.success("Restarting..."); }
+    catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+  }, []);
+
+  const handleReset = useCallback(async () => {
+    try {
+      await resetSettings();
+      setDraft({});
+      setRestartRequired(true);
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      toast.success("Settings reset to defaults");
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+  }, [queryClient]);
+
+  const handleImport = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      await importSettings(data);
+      setDraft({});
+      setRestartRequired(true);
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      toast.success("Settings imported");
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [queryClient]);
+
+  const handleClearDb = useCallback(async () => {
+    try {
+      await clearDatabase();
+      // Force refetch everything — device count, stats, db info
+      await queryClient.refetchQueries({ queryKey: ["db-info"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["devices"] });
+      toast.success("Database cleared — all hosts removed");
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to clear database"); }
+  }, [queryClient]);
+
+  // SQL Console state
+  const [sql, setSql] = useState("SELECT mac, ip_v4, hostname FROM devices LIMIT 20");
+  const [sqlResult, setSqlResult] = useState<{ columns: string[]; rows: unknown[][] } | null>(null);
+  const [sqlRunning, setSqlRunning] = useState(false);
+
+  const handleRunQuery = useCallback(async () => {
+    setSqlRunning(true);
+    try { setSqlResult(await runQuery(sql)); }
+    catch (err) { toast.error(err instanceof Error ? err.message : "Query failed"); setSqlResult(null); }
+    finally { setSqlRunning(false); }
+  }, [sql]);
+
+  if (isLoading || !merged) {
+    return <div className="flex items-center justify-center h-64 text-muted-foreground">Loading settings...</div>;
+  }
+
+  return (
+    <div className="space-y-0">
+      {/* Restart banner */}
+      {restartRequired && (
+        <div className="flex items-center justify-between rounded-lg border border-yellow-500/30 bg-yellow-500/[0.06] px-4 py-3 mb-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-yellow-400">
+            <AlertTriangle size={16} />
+            Settings saved. A restart is required for changes to take effect.
+          </div>
+          <Button size="sm" onClick={handleApply}>Apply &amp; Restart</Button>
+        </div>
+      )}
+
+      {/* Tab bar */}
+      <div className="flex items-center justify-between border-b border-border mb-6">
+        <div className="flex gap-0">
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px",
+                  isActive
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                )}
+              >
+                <Icon size={15} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+        <Button
+          size="sm"
+          onClick={handleSave}
+          disabled={saving || !hasDraft}
+          className="mb-2"
+        >
+          <Save size={14} className="mr-1.5" />
+          {saving ? "Saving..." : "Save"}
+        </Button>
+      </div>
+
+      {/* Tab content */}
+      <div className="rounded-xl bg-card border border-border p-6">
+        {activeTab === "general" && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-base font-semibold mb-1">General Settings</h3>
+              <p className="text-sm text-muted-foreground">Web server configuration and background worker settings.</p>
+            </div>
+            <Separator />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <SettingField label="Web Host" hint="IP address to bind the web server to" value={merged.web_host ?? ""} onChange={(v) => updateField("web_host", v)} />
+              <SettingField label="Web Port" hint="Port for the web server" type="number" value={merged.web_port ?? ""} onChange={(v) => updateField("web_port", Number(v))} />
+              <SettingField label="Sync Interval (days)" hint="Days between fingerprint source syncs" type="number" value={merged.sync_interval ?? ""} onChange={(v) => updateField("sync_interval", Number(v))} />
+              <SettingField label="Worker Count" hint="Number of background workers" type="number" value={merged.worker_count ?? ""} onChange={(v) => updateField("worker_count", Number(v))} />
+              <SettingField label="DB Batch Size" hint="Records per database batch write" type="number" value={merged.db_batch_size ?? ""} onChange={(v) => updateField("db_batch_size", Number(v))} />
+              <SettingField label="DB Flush Interval (s)" hint="Seconds between database flushes" type="number" value={merged.db_flush_interval ?? ""} onChange={(v) => updateField("db_flush_interval", Number(v))} step="0.01" />
+            </div>
+          </div>
+        )}
+
+        {activeTab === "capture" && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-base font-semibold mb-1">Capture &amp; Probing</h3>
+              <p className="text-sm text-muted-foreground">Packet capture filters and active probing configuration.</p>
+            </div>
+            <Separator />
+            <div className="space-y-6">
+              <SettingField label="BPF Filter" hint="Berkeley Packet Filter expression. Leave empty for no filter." value={merged.bpf_filter ?? ""} onChange={(v) => updateField("bpf_filter", v)} mono placeholder="e.g. not port 22" />
+              <Separator />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="flex items-center justify-between rounded-lg bg-secondary/50 border border-border p-4">
+                  <div>
+                    <div className="text-sm font-medium">Probe Enabled</div>
+                    <div className="text-xs text-muted-foreground">Enable active network probing</div>
+                  </div>
+                  <Switch checked={merged.probe_enabled ?? false} onCheckedChange={(c) => updateField("probe_enabled", c)} />
+                </div>
+                <SettingField label="Max Concurrent Probes" hint="Maximum simultaneous probes" type="number" value={merged.max_concurrent_probes ?? ""} onChange={(v) => updateField("max_concurrent_probes", Number(v))} />
+                <SettingField label="Probe Cooldown (s)" hint="Seconds between probe runs per host" type="number" value={merged.probe_cooldown ?? ""} onChange={(v) => updateField("probe_cooldown", Number(v))} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "appearance" && <AppearanceTab />}
+
+        {activeTab === "database" && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-base font-semibold mb-1">Database Information</h3>
+              <p className="text-sm text-muted-foreground">Storage statistics and database management.</p>
+            </div>
+            <Separator />
+            {dbInfo && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <InfoCard icon={<Database size={16} />} label="Database Path" value={dbInfo.db_path} mono copyable />
+                <InfoCard icon={<HardDrive size={16} />} label="Database Size" value={formatBytes(dbInfo.db_size_bytes)} />
+                <InfoCard icon={<Settings2 size={16} />} label="Host Count" value={dbInfo.device_count.toLocaleString()} />
+                <InfoCard icon={<Database size={16} />} label="Cache Directory" value={dbInfo.cache_dir} mono copyable />
+              </div>
+            )}
+            <Separator />
+            <div className="flex flex-wrap gap-3">
+              <ConfirmAction
+                trigger={
+                  <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                    <Trash2 size={14} className="mr-1.5" /> Clear All Hosts
+                  </Button>
+                }
+                title="Clear Database"
+                description="This will permanently delete all identified hosts and associated data. This action cannot be undone."
+                onConfirm={handleClearDb}
+              />
+              <ConfirmAction
+                trigger={
+                  <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                    <RotateCcw size={14} className="mr-1.5" /> Reset to Defaults
+                  </Button>
+                }
+                title="Reset Settings"
+                description="This will reset all settings to their default values. You will need to restart for changes to take effect."
+                onConfirm={handleReset}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeTab === "console" && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-base font-semibold mb-1">SQL Console</h3>
+              <p className="text-sm text-muted-foreground">Read-only database console. Only SELECT queries are allowed.</p>
+            </div>
+            <Separator />
+            <textarea
+              value={sql}
+              onChange={(e) => setSql(e.target.value)}
+              rows={4}
+              className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-vertical"
+              placeholder="SELECT * FROM devices LIMIT 10"
+            />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleRunQuery} disabled={sqlRunning || !sql.trim()}>
+                <Play size={14} className="mr-1" />
+                {sqlRunning ? "Running..." : "Run Query"}
+              </Button>
+            </div>
+
+            {sqlResult && (
+              <div className="rounded-lg border border-border overflow-auto max-h-96">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-border">
+                      {sqlResult.columns.map((col) => (
+                        <TableHead key={col} className="text-xs font-mono text-muted-foreground">{col}</TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sqlResult.rows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={sqlResult.columns.length} className="text-center text-muted-foreground py-8">
+                          No rows returned
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      sqlResult.rows.map((row, i) => (
+                        <TableRow key={i} className="border-border">
+                          {row.map((cell, j) => (
+                            <TableCell key={j} className="text-xs font-mono py-1.5">
+                              {cell === null ? <span className="text-muted-foreground italic">NULL</span> : String(cell)}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "actions" && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-base font-semibold mb-1">Import &amp; Export</h3>
+              <p className="text-sm text-muted-foreground">Backup and restore your Leetha configuration.</p>
+            </div>
+            <Separator />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Export */}
+              <div className="rounded-lg border border-border bg-secondary/30 p-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Download size={18} className="text-primary" />
+                  <h4 className="font-semibold text-sm">Export Configuration</h4>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Download your current settings as a JSON file. This includes all general, capture, and probing settings.
+                </p>
+                <Button variant="outline" size="sm" onClick={() => exportSettings()}>
+                  <Download size={14} className="mr-1.5" /> Download JSON
+                </Button>
+              </div>
+
+              {/* Import */}
+              <div className="rounded-lg border border-border bg-secondary/30 p-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Upload size={18} className="text-primary" />
+                  <h4 className="font-semibold text-sm">Import Configuration</h4>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Upload a previously exported JSON settings file. This will overwrite your current settings.
+                </p>
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  <Upload size={14} className="mr-1.5" /> Upload JSON
+                </Button>
+                <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
+//  Appearance Tab
+// ═══════════════════════════════════════════
+
+function AppearanceTab() {
+  const { appearance, updateAppearance, resetAppearance } = useTheme();
+
+  const FONT_OPTIONS = [
+    { value: "system", label: "System Default", preview: "ui-sans-serif, system-ui" },
+    { value: "inter", label: "Inter", preview: "'Inter', sans-serif" },
+    { value: "mono", label: "Monospace", preview: "ui-monospace, Consolas" },
+  ];
+
+  const SIZE_OPTIONS = [
+    { value: 13, label: "Small (13px)" },
+    { value: 14, label: "Compact (14px)" },
+    { value: 15, label: "Default (15px)" },
+    { value: 16, label: "Large (16px)" },
+    { value: 18, label: "Extra Large (18px)" },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-base font-semibold mb-1">Appearance</h3>
+        <p className="text-sm text-muted-foreground">Customize the look and feel of the Leetha dashboard. Changes apply instantly.</p>
+      </div>
+      <Separator />
+
+      {/* Theme */}
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold">Theme</h4>
+        <div className="flex gap-3">
+          <button
+            onClick={() => updateAppearance({ theme: "dark" })}
+            className={cn(
+              "flex-1 rounded-lg border-2 p-4 text-center transition-all",
+              appearance.theme === "dark" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
+            )}
+          >
+            <div className="w-full h-16 rounded bg-black border border-gray-800 mb-2 flex items-center justify-center">
+              <div className="w-8 h-1 bg-blue-500 rounded" />
+            </div>
+            <span className="text-xs font-medium">Dark</span>
+          </button>
+          <button
+            onClick={() => updateAppearance({ theme: "light" })}
+            className={cn(
+              "flex-1 rounded-lg border-2 p-4 text-center transition-all",
+              appearance.theme === "light" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
+            )}
+          >
+            <div className="w-full h-16 rounded bg-white border border-gray-200 mb-2 flex items-center justify-center">
+              <div className="w-8 h-1 bg-blue-500 rounded" />
+            </div>
+            <span className="text-xs font-medium">Light</span>
+          </button>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Accent Color */}
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold">Accent Color</h4>
+        <p className="text-xs text-muted-foreground">Used for active states, buttons, links, and highlights.</p>
+        <div className="flex flex-wrap gap-2">
+          {ACCENT_PRESETS.map((preset) => (
+            <button
+              key={preset.value}
+              onClick={() => updateAppearance({ accentColor: preset.value })}
+              className={cn(
+                "w-10 h-10 rounded-lg border-2 transition-all hover:scale-110",
+                appearance.accentColor === preset.value ? "border-foreground scale-110" : "border-transparent"
+              )}
+              style={{ background: preset.preview }}
+              title={preset.name}
+            />
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Active: <span className="font-mono" style={{ color: `hsl(${appearance.accentColor})` }}>{ACCENT_PRESETS.find((p) => p.value === appearance.accentColor)?.name ?? "Custom"}</span>
+        </p>
+      </div>
+
+      <Separator />
+
+      {/* Font */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold">Font Family</h4>
+          <div className="space-y-1.5">
+            {FONT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => updateAppearance({ fontFamily: opt.value as "system" | "inter" | "mono" })}
+                className={cn(
+                  "w-full text-left rounded-lg border px-4 py-2.5 transition-all",
+                  appearance.fontFamily === opt.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
+                )}
+              >
+                <div className="text-sm font-medium">{opt.label}</div>
+                <div className="text-[10px] text-muted-foreground font-mono">{opt.preview}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold">Font Size</h4>
+          <div className="space-y-1.5">
+            {SIZE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => updateAppearance({ fontSize: opt.value })}
+                className={cn(
+                  "w-full text-left rounded-lg border px-4 py-2.5 transition-all",
+                  appearance.fontSize === opt.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
+                )}
+              >
+                <span className="text-sm">{opt.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Display Options */}
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold">Display Options</h4>
+
+        <div className="flex items-center justify-between rounded-lg bg-secondary/30 border border-border px-4 py-3">
+          <div>
+            <div className="text-sm font-medium">Animations</div>
+            <div className="text-xs text-muted-foreground">Enable hover animations and transitions</div>
+          </div>
+          <Switch checked={appearance.animationsEnabled} onCheckedChange={(v) => updateAppearance({ animationsEnabled: v })} />
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg bg-secondary/30 border border-border px-4 py-3">
+          <div>
+            <div className="text-sm font-medium">High Contrast</div>
+            <div className="text-xs text-muted-foreground">Increase text and border contrast for better readability</div>
+          </div>
+          <Switch checked={appearance.highContrast} onCheckedChange={(v) => updateAppearance({ highContrast: v })} />
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Reset */}
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-medium">Reset Appearance</div>
+          <div className="text-xs text-muted-foreground">Restore all appearance settings to defaults</div>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => { resetAppearance(); toast.success("Appearance reset to defaults"); }}>
+          <RotateCcw size={14} className="mr-1.5" /> Reset
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SettingField({ label, hint, type = "text", value, onChange, mono, placeholder, step }: {
+  label: string; hint?: string; type?: string; value: string | number; onChange: (v: string) => void; mono?: boolean; placeholder?: string; step?: string;
+}) {
+  return (
+    <div>
+      <div className="text-sm font-medium mb-1">{label}</div>
+      {hint && <div className="text-xs text-muted-foreground mb-1.5">{hint}</div>}
+      <Input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn("bg-secondary border-border", mono && "font-mono")}
+        placeholder={placeholder}
+        step={step}
+      />
+    </div>
+  );
+}
+
+function InfoCard({ icon, label, value, mono, copyable }: {
+  icon: React.ReactNode; label: string; value: string; mono?: boolean; copyable?: boolean;
+}) {
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value);
+    toast.success("Copied to clipboard");
+  };
+
+  return (
+    <div className="rounded-lg bg-secondary/50 border border-border p-4">
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="text-muted-foreground">{icon}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{label}</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className={cn("text-sm font-medium break-all", mono && "font-mono text-xs")}>{value}</span>
+        {copyable && (
+          <button onClick={handleCopy} className="shrink-0 p-0.5 rounded hover:bg-accent transition-colors" title="Copy">
+            <Copy size={12} className="text-muted-foreground" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

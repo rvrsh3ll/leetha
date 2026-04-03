@@ -1,0 +1,67 @@
+"""Split protocol parsers returning CapturedPacket.
+
+Each module handles a logical group of protocols. The PARSER_CHAIN
+defines the order in which parsers are tried -- most specific first,
+fallback last. A packet can match multiple parsers.
+
+Backward-compatibility: this package also re-exports the old ParsedPacket
+dataclass and all legacy parser functions so existing code that imports
+from ``leetha.capture.protocols`` keeps working during the bridge period.
+"""
+# --- New CapturedPacket-returning parsers (used by PARSER_CHAIN) ---
+from leetha.capture.protocols.arp import parse_arp as _new_parse_arp
+from leetha.capture.protocols.dhcp import parse_dhcpv4 as _new_parse_dhcpv4
+from leetha.capture.protocols.dhcp import parse_dhcpv6 as _new_parse_dhcpv6
+from leetha.capture.protocols.dhcp import parse_dhcp_server as _new_parse_dhcp_server
+from leetha.capture.protocols.dns import parse_dns as _new_parse_dns
+from leetha.capture.protocols.dns import parse_dns_answer as _new_parse_dns_answer
+from leetha.capture.protocols.tls import parse_tls_client_hello as _new_parse_tls_client_hello
+from leetha.capture.protocols.http import parse_http_useragent as _new_parse_http_useragent
+from leetha.capture.protocols.discovery import parse_mdns as _new_parse_mdns
+from leetha.capture.protocols.discovery import parse_ssdp as _new_parse_ssdp
+from leetha.capture.protocols.discovery import parse_llmnr_netbios as _new_parse_llmnr_netbios
+from leetha.capture.protocols.infrastructure import parse_lldp as _new_parse_lldp
+from leetha.capture.protocols.infrastructure import parse_cdp as _new_parse_cdp
+from leetha.capture.protocols.infrastructure import parse_stp as _new_parse_stp
+from leetha.capture.protocols.infrastructure import parse_snmp as _new_parse_snmp
+from leetha.capture.protocols.fallback import parse_ip_observed as _new_parse_ip_observed
+from leetha.capture.protocols.icmpv6 import parse_icmpv6 as _new_parse_icmpv6
+from leetha.capture.protocols.ws_discovery import parse_ws_discovery as _new_parse_ws_discovery
+from leetha.capture.protocols.ntp import parse_ntp as _new_parse_ntp
+
+# Ordered parser chain -- most specific first, fallback last
+PARSER_CHAIN = [
+    _new_parse_lldp, _new_parse_cdp, _new_parse_stp,
+    _new_parse_arp,
+    _new_parse_dhcp_server, _new_parse_dhcpv4, _new_parse_dhcpv6,
+    _new_parse_tls_client_hello, _new_parse_http_useragent,
+    _new_parse_dns, _new_parse_dns_answer,
+    _new_parse_mdns, _new_parse_ssdp, _new_parse_llmnr_netbios,
+    _new_parse_ws_discovery,
+    _new_parse_snmp,
+    _new_parse_icmpv6,
+    _new_parse_ntp,
+    _new_parse_ip_observed,
+]
+
+# ---------------------------------------------------------------------------
+# Backward-compatibility re-exports from the old monolithic protocols.py
+# These return ParsedPacket and are used by existing code and tests.
+# ---------------------------------------------------------------------------
+from leetha.capture.protocols._legacy import (  # noqa: F401, E402
+    ParsedPacket,
+    parse_tcp_syn,
+    parse_dhcpv4,
+    parse_dhcpv6,
+    parse_mdns,
+    parse_arp,
+    parse_ssdp,
+    parse_llmnr_netbios,
+    parse_tls_client_hello,
+    parse_dns,
+    parse_dns_answer,
+    parse_icmpv6,
+    parse_ip_observed,
+    parse_http_useragent,
+    _guess_initial_ttl,
+)

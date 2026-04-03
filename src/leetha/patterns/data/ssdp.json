@@ -1,0 +1,159 @@
+{
+  "server_patterns": [
+    {
+      "pattern": "Microsoft-Windows/(\\S+)\\s+UPnP",
+      "os_family": "Windows",
+      "os_version_group": 1,
+      "device_type": "workstation",
+      "manufacturer": "Microsoft",
+      "confidence": 82
+    },
+    {
+      "pattern": "Linux/([\\d.]+)",
+      "os_family": "Linux",
+      "os_version_group": 1,
+      "confidence": 75
+    },
+    {
+      "pattern": "Darwin/([\\d.]+)",
+      "os_family": "macOS",
+      "os_version_group": 1,
+      "manufacturer": "Apple",
+      "confidence": 78
+    },
+    {
+      "pattern": "Sonos/([\\d.\\-]+)",
+      "os_version_group": 1,
+      "device_type": "smart_speaker",
+      "manufacturer": "Sonos",
+      "confidence": 90
+    },
+    {
+      "pattern": "Roku/(\\S+)",
+      "os_version_group": 1,
+      "device_type": "streaming_device",
+      "manufacturer": "Roku",
+      "confidence": 88
+    },
+    {
+      "pattern": "Samsung[\\s/].*UPnP|SEC_HHP.*Samsung",
+      "device_type": "smart_tv",
+      "manufacturer": "Samsung",
+      "confidence": 85
+    },
+    {
+      "pattern": "LG[\\s/].*UPnP|LG\\s+WebOS",
+      "device_type": "smart_tv",
+      "manufacturer": "LG",
+      "confidence": 85
+    },
+    {
+      "pattern": "IpBridge/([\\d.]+)",
+      "os_version_group": 1,
+      "device_type": "smart_home",
+      "manufacturer": "Philips",
+      "confidence": 92
+    },
+    {
+      "pattern": "Chromecast/([\\d.]+)|Google[\\s\\-]?Cast",
+      "device_type": "streaming_device",
+      "manufacturer": "Google",
+      "confidence": 88
+    },
+    {
+      "pattern": "PlayStation\\s*(\\d)?|UPnP.*SonyInteractiveEntertainment",
+      "device_type": "game_console",
+      "manufacturer": "Sony",
+      "confidence": 88
+    },
+    {
+      "pattern": "Xbox|Microsoft.*XboxOne|Microsoft.*Xbox",
+      "device_type": "game_console",
+      "manufacturer": "Microsoft",
+      "confidence": 88
+    },
+    {
+      "pattern": "FRITZ[!.]?Box\\s*([\\d.]+)?|AVM\\s+FRITZ",
+      "device_type": "router",
+      "manufacturer": "AVM",
+      "confidence": 90
+    },
+    {
+      "pattern": "Synology/([\\d.]+)|Synology\\s+NAS",
+      "os_version_group": 1,
+      "device_type": "nas",
+      "manufacturer": "Synology",
+      "confidence": 88
+    },
+    {
+      "pattern": "QNAP/([\\d.]+)|QNAP\\s+NAS",
+      "os_version_group": 1,
+      "device_type": "nas",
+      "manufacturer": "QNAP",
+      "confidence": 88
+    },
+    {
+      "pattern": "Plex/([\\d.]+)|Plex\\s+Media\\s+Server",
+      "os_version_group": 1,
+      "device_type": "media_server",
+      "manufacturer": "Plex",
+      "confidence": 85
+    },
+    {
+      "pattern": "MiniUPnP[dD]?/([\\d.]+)",
+      "os_version_group": 1,
+      "device_type": "router",
+      "confidence": 60
+    }
+  ],
+  "upnp_device_types": {
+    "urn:schemas-upnp-org:device:MediaRenderer": {
+      "category": "media_player"
+    },
+    "urn:schemas-upnp-org:device:MediaServer": {
+      "category": "media_server"
+    },
+    "urn:schemas-upnp-org:device:InternetGatewayDevice": {
+      "category": "router"
+    },
+    "urn:schemas-upnp-org:device:WANDevice": {
+      "category": "router"
+    },
+    "urn:schemas-upnp-org:device:WANConnectionDevice": {
+      "category": "router"
+    },
+    "urn:schemas-upnp-org:device:LANDevice": {
+      "category": "switch"
+    },
+    "urn:schemas-upnp-org:device:Printer": {
+      "category": "printer"
+    },
+    "urn:schemas-upnp-org:device:Scanner": {
+      "category": "scanner"
+    },
+    "urn:schemas-upnp-org:device:Basic": {
+      "category": "unknown"
+    },
+    "urn:schemas-upnp-org:device:BinaryLight": {
+      "category": "smart_home"
+    },
+    "urn:schemas-upnp-org:device:DimmableLight": {
+      "category": "smart_home"
+    },
+    "urn:schemas-upnp-org:device:DigitalSecurityCamera": {
+      "category": "camera"
+    },
+    "urn:schemas-upnp-org:device:HVAC": {
+      "category": "smart_home"
+    },
+    "urn:schemas-upnp-org:device:SolarProtectionBlind": {
+      "category": "smart_home"
+    },
+    "urn:schemas-upnp-org:device:RemoteUIClientDevice": {
+      "category": "workstation"
+    },
+    "urn:schemas-upnp-org:device:RemoteUIServerDevice": {
+      "category": "server"
+    }
+  }
+}

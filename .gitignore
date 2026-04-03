@@ -1,0 +1,60 @@
+# Leetha project ignores
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+
+# Build output
+build/
+dist/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Lint / type check caches
+.ruff_cache/
+.mypy_cache/
+
+# Editor state
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Git worktrees
+.worktrees/
+
+# Runtime data (synced databases, SQLite)
+*.db
+*.sqlite
+*.jsonl
+
+# Environment / secrets
+.env
+.env.*
+
+# Implementation plans (local only)
+docs/plans/
+
+# Frontend build deps (built assets are committed)
+frontend/node_modules/

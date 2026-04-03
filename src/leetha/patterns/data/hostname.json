@@ -1,0 +1,1658 @@
+[
+  {
+    "match": ".+['\\u2019]?s?[_-]iPhone",
+    "category": "phone",
+    "vendor": "Apple",
+    "platform": "iOS",
+    "model": "iPhone",
+    "certainty": 95
+  },
+  {
+    "match": "^iPhone",
+    "category": "phone",
+    "vendor": "Apple",
+    "platform": "iOS",
+    "model": "iPhone",
+    "certainty": 92
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]iPad",
+    "category": "tablet",
+    "vendor": "Apple",
+    "platform": "iPadOS",
+    "model": "iPad",
+    "certainty": 95
+  },
+  {
+    "match": "^iPad",
+    "category": "tablet",
+    "vendor": "Apple",
+    "platform": "iPadOS",
+    "model": "iPad",
+    "certainty": 92
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]MacBook[_-]?Pro",
+    "category": "laptop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "MacBook Pro",
+    "certainty": 95
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]MacBook[_-]?Air",
+    "category": "laptop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "MacBook Air",
+    "certainty": 95
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]MacBook",
+    "category": "laptop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "MacBook",
+    "certainty": 93
+  },
+  {
+    "match": "^MacBook[_-]?Pro",
+    "category": "laptop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "MacBook Pro",
+    "certainty": 93
+  },
+  {
+    "match": "^MacBook[_-]?Air",
+    "category": "laptop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "MacBook Air",
+    "certainty": 93
+  },
+  {
+    "match": "^MacBook",
+    "category": "laptop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "MacBook",
+    "certainty": 90
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]iMac",
+    "category": "desktop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "iMac",
+    "certainty": 95
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]Mac[_-]?mini",
+    "category": "desktop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "Mac mini",
+    "certainty": 95
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]Mac[_-]?Pro",
+    "category": "desktop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "Mac Pro",
+    "certainty": 93
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]Mac[_-]?Studio",
+    "category": "desktop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "Mac Studio",
+    "certainty": 95
+  },
+  {
+    "match": "^iMac",
+    "category": "desktop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "iMac",
+    "certainty": 92
+  },
+  {
+    "match": "^Mac[_-]?mini",
+    "category": "desktop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "Mac mini",
+    "certainty": 92
+  },
+  {
+    "match": "^Mac[_-]?Pro",
+    "category": "desktop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "Mac Pro",
+    "certainty": 90
+  },
+  {
+    "match": "^Mac[_-]?Studio",
+    "category": "desktop",
+    "vendor": "Apple",
+    "platform": "macOS",
+    "model": "Mac Studio",
+    "certainty": 92
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]Apple[_-]?Watch",
+    "category": "wearable",
+    "vendor": "Apple",
+    "platform": "watchOS",
+    "model": "Apple Watch",
+    "certainty": 95
+  },
+  {
+    "match": "^Apple[_-]?Watch",
+    "category": "wearable",
+    "vendor": "Apple",
+    "platform": "watchOS",
+    "model": "Apple Watch",
+    "certainty": 92
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]AirPods[_-]?Pro",
+    "category": "wireless_earbuds",
+    "vendor": "Apple",
+    "platform": null,
+    "model": "AirPods Pro",
+    "certainty": 95
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]AirPods[_-]?Max",
+    "category": "wireless_headphones",
+    "vendor": "Apple",
+    "platform": null,
+    "model": "AirPods Max",
+    "certainty": 95
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]AirPods",
+    "category": "wireless_earbuds",
+    "vendor": "Apple",
+    "platform": null,
+    "model": "AirPods",
+    "certainty": 93
+  },
+  {
+    "match": "^AirPods[_-]?Pro",
+    "category": "wireless_earbuds",
+    "vendor": "Apple",
+    "platform": null,
+    "model": "AirPods Pro",
+    "certainty": 92
+  },
+  {
+    "match": "^AirPods[_-]?Max",
+    "category": "wireless_headphones",
+    "vendor": "Apple",
+    "platform": null,
+    "model": "AirPods Max",
+    "certainty": 92
+  },
+  {
+    "match": "^AirPods",
+    "category": "wireless_earbuds",
+    "vendor": "Apple",
+    "platform": null,
+    "model": "AirPods",
+    "certainty": 90
+  },
+  {
+    "match": "HomePod[_-]?mini",
+    "category": "smart_speaker",
+    "vendor": "Apple",
+    "platform": "audioOS",
+    "model": "HomePod mini",
+    "certainty": 95
+  },
+  {
+    "match": "HomePod",
+    "category": "smart_speaker",
+    "vendor": "Apple",
+    "platform": "audioOS",
+    "model": "HomePod",
+    "certainty": 92
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]Apple[_-]?TV",
+    "category": "media_player",
+    "vendor": "Apple",
+    "platform": "tvOS",
+    "model": "Apple TV",
+    "certainty": 95
+  },
+  {
+    "match": "^Apple[_-]?TV",
+    "category": "media_player",
+    "vendor": "Apple",
+    "platform": "tvOS",
+    "model": "Apple TV",
+    "certainty": 92
+  },
+  {
+    "match": ".+['\\u2019]?s?[_-]Apple[_-]?Vision",
+    "category": "ar_headset",
+    "vendor": "Apple",
+    "platform": "visionOS",
+    "model": "Apple Vision Pro",
+    "certainty": 95
+  },
+  {
+    "match": "Apple[_-]?Vision",
+    "category": "ar_headset",
+    "vendor": "Apple",
+    "platform": "visionOS",
+    "model": "Apple Vision Pro",
+    "certainty": 92
+  },
+  {
+    "match": "Pixel[_-]?9[_-]?Pro[_-]?(?:XL|Fold)",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 9 Pro",
+    "certainty": 95
+  },
+  {
+    "match": "Pixel[_-]?9[_-]?Pro",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 9 Pro",
+    "certainty": 95
+  },
+  {
+    "match": "Pixel[_-]?9",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 9",
+    "certainty": 93
+  },
+  {
+    "match": "Pixel[_-]?8[_-]?Pro",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 8 Pro",
+    "certainty": 95
+  },
+  {
+    "match": "Pixel[_-]?8a",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 8a",
+    "certainty": 93
+  },
+  {
+    "match": "Pixel[_-]?8",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 8",
+    "certainty": 93
+  },
+  {
+    "match": "Pixel[_-]?7[_-]?Pro",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 7 Pro",
+    "certainty": 95
+  },
+  {
+    "match": "Pixel[_-]?7a",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 7a",
+    "certainty": 93
+  },
+  {
+    "match": "Pixel[_-]?7",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 7",
+    "certainty": 93
+  },
+  {
+    "match": "Pixel[_-]?6[_-]?Pro",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 6 Pro",
+    "certainty": 95
+  },
+  {
+    "match": "Pixel[_-]?6a",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 6a",
+    "certainty": 93
+  },
+  {
+    "match": "Pixel[_-]?6",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel 6",
+    "certainty": 93
+  },
+  {
+    "match": "Pixel[_-]?Tablet",
+    "category": "tablet",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel Tablet",
+    "certainty": 93
+  },
+  {
+    "match": "Pixel[_-]?Watch",
+    "category": "wearable",
+    "vendor": "Google",
+    "platform": "Wear OS",
+    "model": "Pixel Watch",
+    "certainty": 93
+  },
+  {
+    "match": "Pixel[_-]?Buds",
+    "category": "wireless_earbuds",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Pixel Buds",
+    "certainty": 90
+  },
+  {
+    "match": "Pixel[_-]?\\d",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel",
+    "certainty": 90
+  },
+  {
+    "match": "^Pixel$",
+    "category": "phone",
+    "vendor": "Google",
+    "platform": "Android",
+    "model": "Pixel",
+    "certainty": 85
+  },
+  {
+    "match": "^android-[0-9a-f]{12,16}$",
+    "category": "phone",
+    "vendor": null,
+    "platform": "Android",
+    "model": null,
+    "certainty": 88
+  },
+  {
+    "match": "^android-",
+    "category": "phone",
+    "vendor": null,
+    "platform": "Android",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "Google[_-]?Home[_-]?Max",
+    "category": "smart_speaker",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Google Home Max",
+    "certainty": 92
+  },
+  {
+    "match": "Google[_-]?Home[_-]?Mini",
+    "category": "smart_speaker",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Google Home Mini",
+    "certainty": 92
+  },
+  {
+    "match": "Google[_-]?Home",
+    "category": "smart_speaker",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Google Home",
+    "certainty": 90
+  },
+  {
+    "match": "^GHome\\b",
+    "category": "smart_speaker",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Google Home",
+    "certainty": 85
+  },
+  {
+    "match": "Nest[_-]?Hub[_-]?Max",
+    "category": "smart_display",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Nest Hub Max",
+    "certainty": 92
+  },
+  {
+    "match": "Nest[_-]?Hub",
+    "category": "smart_display",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Nest Hub",
+    "certainty": 90
+  },
+  {
+    "match": "Nest[_-]?Mini",
+    "category": "smart_speaker",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Nest Mini",
+    "certainty": 90
+  },
+  {
+    "match": "Nest[_-]?Audio",
+    "category": "smart_speaker",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Nest Audio",
+    "certainty": 90
+  },
+  {
+    "match": "Chromecast",
+    "category": "media_player",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Chromecast",
+    "certainty": 90
+  },
+  {
+    "match": "Nest[_-]?Cam",
+    "category": "camera",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Nest Cam",
+    "certainty": 90
+  },
+  {
+    "match": "Nest[_-]?Doorbell",
+    "category": "doorbell",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Nest Doorbell",
+    "certainty": 90
+  },
+  {
+    "match": "Nest[_-]?Thermostat",
+    "category": "thermostat",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Nest Thermostat",
+    "certainty": 90
+  },
+  {
+    "match": "Nest[_-]?Protect",
+    "category": "smoke_detector",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Nest Protect",
+    "certainty": 90
+  },
+  {
+    "match": "Nest[_-]?Wifi",
+    "category": "router",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Nest WiFi",
+    "certainty": 90
+  },
+  {
+    "match": "Google[_-]?Wifi",
+    "category": "router",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Google WiFi",
+    "certainty": 88
+  },
+  {
+    "match": "Galaxy[_-]?S2[4-9]",
+    "category": "phone",
+    "vendor": "Samsung",
+    "platform": "Android",
+    "model": "Galaxy S",
+    "certainty": 90
+  },
+  {
+    "match": "Galaxy[_-]?S2[0-3]",
+    "category": "phone",
+    "vendor": "Samsung",
+    "platform": "Android",
+    "model": "Galaxy S",
+    "certainty": 88
+  },
+  {
+    "match": "Galaxy[_-]?A\\d{2}",
+    "category": "phone",
+    "vendor": "Samsung",
+    "platform": "Android",
+    "model": "Galaxy A",
+    "certainty": 85
+  },
+  {
+    "match": "Galaxy[_-]?Z[_-]?(?:Fold|Flip)",
+    "category": "phone",
+    "vendor": "Samsung",
+    "platform": "Android",
+    "model": "Galaxy Z",
+    "certainty": 90
+  },
+  {
+    "match": "Galaxy[_-]?Tab",
+    "category": "tablet",
+    "vendor": "Samsung",
+    "platform": "Android",
+    "model": "Galaxy Tab",
+    "certainty": 88
+  },
+  {
+    "match": "Galaxy",
+    "category": "phone",
+    "vendor": "Samsung",
+    "platform": "Android",
+    "model": "Galaxy",
+    "certainty": 80
+  },
+  {
+    "match": "echo[_-]",
+    "category": "smart_speaker",
+    "vendor": "Amazon",
+    "platform": null,
+    "model": "Echo",
+    "certainty": 85
+  },
+  {
+    "match": "alexa[_-]",
+    "category": "smart_speaker",
+    "vendor": "Amazon",
+    "platform": null,
+    "model": "Echo",
+    "certainty": 80
+  },
+  {
+    "match": "roborock[_-]vacuum",
+    "category": "robot_vacuum",
+    "vendor": "Roborock",
+    "platform": "Linux (Embedded)",
+    "model": null,
+    "certainty": 95
+  },
+  {
+    "match": "roborock[_-]",
+    "category": "robot_vacuum",
+    "vendor": "Roborock",
+    "platform": "Linux (Embedded)",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "roomba[_-]",
+    "category": "robot_vacuum",
+    "vendor": "iRobot",
+    "platform": null,
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "irobot[_-]",
+    "category": "robot_vacuum",
+    "vendor": "iRobot",
+    "platform": null,
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "deebot[_-]",
+    "category": "robot_vacuum",
+    "vendor": "Ecovacs",
+    "platform": null,
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "ecovacs[_-]",
+    "category": "robot_vacuum",
+    "vendor": "Ecovacs",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "roborock",
+    "category": "robot_vacuum",
+    "vendor": "Roborock",
+    "platform": "Linux (Embedded)",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "roku[_-]",
+    "category": "smart_tv",
+    "vendor": "Roku",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "fire[_-]?tv[_-]?stick",
+    "category": "streaming_device",
+    "vendor": "Amazon",
+    "platform": "Fire OS",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "firetv",
+    "category": "streaming_device",
+    "vendor": "Amazon",
+    "platform": "Fire OS",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "samsung[_-].*tv",
+    "category": "smart_tv",
+    "vendor": "Samsung",
+    "platform": "Tizen",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "lg[_-].*tv",
+    "category": "smart_tv",
+    "vendor": "LG",
+    "platform": "webOS",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "bravia",
+    "category": "smart_tv",
+    "vendor": "Sony",
+    "platform": "Android TV",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "philips[_-]?hue",
+    "category": "smart_home",
+    "vendor": "Philips",
+    "platform": null,
+    "model": "Hue Bridge",
+    "certainty": 90
+  },
+  {
+    "match": "hue[_-]bridge",
+    "category": "smart_home",
+    "vendor": "Philips",
+    "platform": null,
+    "model": "Hue Bridge",
+    "certainty": 90
+  },
+  {
+    "match": "smartthings",
+    "category": "smart_home",
+    "vendor": "Samsung",
+    "platform": null,
+    "model": "SmartThings Hub",
+    "certainty": 85
+  },
+  {
+    "match": "homeassistant",
+    "category": "smart_home",
+    "vendor": null,
+    "platform": "Linux",
+    "model": "Home Assistant",
+    "certainty": 85
+  },
+  {
+    "match": "home[_-]assistant",
+    "category": "smart_home",
+    "vendor": null,
+    "platform": "Linux",
+    "model": "Home Assistant",
+    "certainty": 85
+  },
+  {
+    "match": "ring[_-]",
+    "category": "camera",
+    "vendor": "Ring",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "wyze[_-]?cam",
+    "category": "camera",
+    "vendor": "Wyze",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "arlo[_-]",
+    "category": "camera",
+    "vendor": "Arlo",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "hikvision",
+    "category": "camera",
+    "vendor": "Hikvision",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "dahua",
+    "category": "camera",
+    "vendor": "Dahua",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "reolink",
+    "category": "camera",
+    "vendor": "Reolink",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "ratgdo",
+    "category": "garage_controller",
+    "vendor": "ratgdo",
+    "platform": null,
+    "model": "ratgdo Garage Door",
+    "certainty": 92
+  },
+  {
+    "match": "esphome",
+    "category": "iot",
+    "vendor": null,
+    "platform": null,
+    "model": "ESPHome Device",
+    "certainty": 85
+  },
+  {
+    "match": "tasmota",
+    "category": "iot",
+    "vendor": null,
+    "platform": null,
+    "model": "Tasmota Device",
+    "certainty": 85
+  },
+  {
+    "match": "shelly",
+    "category": "iot",
+    "vendor": "Shelly",
+    "platform": null,
+    "model": null,
+    "certainty": 88
+  },
+  {
+    "match": "wled",
+    "category": "smart_light",
+    "vendor": null,
+    "platform": null,
+    "model": "WLED Controller",
+    "certainty": 85
+  },
+  {
+    "match": "athom",
+    "category": "iot",
+    "vendor": "Athom",
+    "platform": null,
+    "model": "Athom Smart Device",
+    "certainty": 85
+  },
+  {
+    "match": "ecobee",
+    "category": "thermostat",
+    "vendor": "ecobee",
+    "platform": null,
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "hp[_-]?laserjet",
+    "category": "printer",
+    "vendor": "HP",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "hp[_-]?officejet",
+    "category": "printer",
+    "vendor": "HP",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "hp[_-]?envy",
+    "category": "printer",
+    "vendor": "HP",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "hp[_-]?deskjet",
+    "category": "printer",
+    "vendor": "HP",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "epson.*printer",
+    "category": "printer",
+    "vendor": "Epson",
+    "platform": null,
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "brother.*printer",
+    "category": "printer",
+    "vendor": "Brother",
+    "platform": null,
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "canon.*printer",
+    "category": "printer",
+    "vendor": "Canon",
+    "platform": null,
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "playstation",
+    "category": "game_console",
+    "vendor": "Sony",
+    "platform": null,
+    "model": "PlayStation",
+    "certainty": 90
+  },
+  {
+    "match": "ps[45][_-]",
+    "category": "game_console",
+    "vendor": "Sony",
+    "platform": null,
+    "model": "PlayStation",
+    "certainty": 85
+  },
+  {
+    "match": "xbox",
+    "category": "game_console",
+    "vendor": "Microsoft",
+    "platform": null,
+    "model": "Xbox",
+    "certainty": 90
+  },
+  {
+    "match": "nintendo[_-]?switch",
+    "category": "game_console",
+    "vendor": "Nintendo",
+    "platform": null,
+    "model": "Switch",
+    "certainty": 90
+  },
+  {
+    "match": "unifi[_-]",
+    "category": "access_point",
+    "vendor": "Ubiquiti",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^ubnt",
+    "category": "router",
+    "vendor": "Ubiquiti",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "mikrotik",
+    "category": "router",
+    "vendor": "MikroTik",
+    "platform": "RouterOS",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^NETGEAR",
+    "category": "router",
+    "vendor": "Netgear",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^TP-Link",
+    "category": "router",
+    "vendor": "TP-Link",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^Linksys",
+    "category": "router",
+    "vendor": "Linksys",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^Aruba",
+    "category": "access_point",
+    "vendor": "Aruba",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^Lutron-",
+    "category": "smart_home",
+    "vendor": "Lutron",
+    "platform": null,
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^Hue-Bridge",
+    "category": "smart_home",
+    "vendor": "Philips",
+    "platform": null,
+    "model": "Hue Bridge",
+    "certainty": 90
+  },
+  {
+    "match": "^Nest-",
+    "category": "smart_home",
+    "vendor": "Google",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^LIFX",
+    "category": "smart_home",
+    "vendor": "LIFX",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^Wemo",
+    "category": "smart_home",
+    "vendor": "Belkin",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^NestCam",
+    "category": "camera",
+    "vendor": "Google",
+    "platform": null,
+    "model": "Nest Cam",
+    "certainty": 90
+  },
+  {
+    "match": "^AXIS-",
+    "category": "camera",
+    "vendor": "Axis",
+    "platform": null,
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^ESP-",
+    "category": "iot",
+    "vendor": "Espressif",
+    "platform": null,
+    "model": null,
+    "certainty": 75
+  },
+  {
+    "match": "^esp32",
+    "category": "iot",
+    "vendor": "Espressif",
+    "platform": null,
+    "model": null,
+    "certainty": 75
+  },
+  {
+    "match": "^esp8266",
+    "category": "iot",
+    "vendor": "Espressif",
+    "platform": null,
+    "model": null,
+    "certainty": 75
+  },
+  {
+    "match": "^Tasmota",
+    "category": "iot",
+    "vendor": "Espressif",
+    "platform": null,
+    "model": "Tasmota Device",
+    "certainty": 80
+  },
+  {
+    "match": "^Shelly",
+    "category": "iot",
+    "vendor": "Shelly",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^JBL[- ]?Link",
+    "category": "smart_speaker",
+    "vendor": "JBL",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^Amazon-",
+    "category": "smart_speaker",
+    "vendor": "Amazon",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^Echo-",
+    "category": "smart_speaker",
+    "vendor": "Amazon",
+    "platform": null,
+    "model": "Echo",
+    "certainty": 85
+  },
+  {
+    "match": "^Sonos-",
+    "category": "smart_speaker",
+    "vendor": "Sonos",
+    "platform": null,
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^FireTV",
+    "category": "streaming_device",
+    "vendor": "Amazon",
+    "platform": "Fire OS",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^PS5-",
+    "category": "game_console",
+    "vendor": "Sony",
+    "platform": null,
+    "model": "PlayStation 5",
+    "certainty": 90
+  },
+  {
+    "match": "^Nintendo",
+    "category": "game_console",
+    "vendor": "Nintendo",
+    "platform": null,
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "DESKTOP-[A-Z0-9]+$",
+    "category": "desktop",
+    "vendor": null,
+    "platform": "Windows",
+    "model": null,
+    "certainty": 70
+  },
+  {
+    "match": "^LAPTOP-[A-Z0-9]+$",
+    "category": "laptop",
+    "vendor": null,
+    "platform": "Windows",
+    "model": null,
+    "certainty": 70
+  },
+  {
+    "match": "^kali\\b",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Kali Linux",
+    "model": null,
+    "certainty": 88
+  },
+  {
+    "match": "^parrot\\b",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Parrot OS",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^blackarch\\b",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "BlackArch",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^ubuntu[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Ubuntu",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^debian[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Debian",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^fedora[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Fedora",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^centos[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "CentOS",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^rhel[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "RHEL",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^rocky[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Rocky Linux",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^alma[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "AlmaLinux",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^arch[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Arch Linux",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "^manjaro[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Manjaro",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "^opensuse[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "openSUSE",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^suse[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "SUSE",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "^mint[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Linux Mint",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "^pop[_-]os",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Pop!_OS",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^elementary[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "elementary OS",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "^zorin[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Zorin OS",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "^gentoo[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Gentoo",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^void[_-]?linux",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "Void Linux",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "^nixos[_-]?",
+    "category": "workstation",
+    "vendor": null,
+    "platform": "NixOS",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^raspberrypi\\b",
+    "category": "sbc",
+    "vendor": "Raspberry Pi",
+    "platform": "Raspberry Pi OS",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^raspi\\b",
+    "category": "sbc",
+    "vendor": "Raspberry Pi",
+    "platform": "Raspberry Pi OS",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^rpi[_-]?",
+    "category": "sbc",
+    "vendor": "Raspberry Pi",
+    "platform": "Raspberry Pi OS",
+    "model": null,
+    "certainty": 82
+  },
+  {
+    "match": "^esxi[_-]",
+    "category": "hypervisor",
+    "vendor": "VMware",
+    "platform": "ESXi",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^vcenter",
+    "category": "hypervisor",
+    "vendor": "VMware",
+    "platform": "ESXi",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^vsphere",
+    "category": "hypervisor",
+    "vendor": "VMware",
+    "platform": "ESXi",
+    "model": null,
+    "certainty": 88
+  },
+  {
+    "match": "^pve[_-]",
+    "category": "hypervisor",
+    "vendor": "Proxmox",
+    "platform": "Proxmox VE",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^proxmox",
+    "category": "hypervisor",
+    "vendor": "Proxmox",
+    "platform": "Proxmox VE",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^k8s[_-]",
+    "category": "k8s_node",
+    "vendor": null,
+    "platform": "Linux",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^kube[_-]",
+    "category": "k8s_node",
+    "vendor": null,
+    "platform": "Linux",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^docker[_-]",
+    "category": "container_host",
+    "vendor": null,
+    "platform": "Linux",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^xenserver[_-]",
+    "category": "hypervisor",
+    "vendor": "Citrix",
+    "platform": "XenServer",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^netscaler",
+    "category": "load_balancer",
+    "vendor": "Citrix",
+    "platform": "NetScaler",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^lxc[_-]",
+    "category": "lxc_container",
+    "vendor": null,
+    "platform": "Linux",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^ct\\d+$",
+    "category": "lxc_container",
+    "vendor": null,
+    "platform": "Linux",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "^openmediavault",
+    "category": "nas",
+    "vendor": "OpenMediaVault",
+    "platform": "Linux",
+    "model": null,
+    "certainty": 88
+  },
+  {
+    "match": "^omv[_-]",
+    "category": "nas",
+    "vendor": "OpenMediaVault",
+    "platform": "Linux",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^truenas",
+    "category": "nas",
+    "vendor": "TrueNAS",
+    "platform": "FreeBSD",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^freenas",
+    "category": "nas",
+    "vendor": "TrueNAS",
+    "platform": "FreeBSD",
+    "model": null,
+    "certainty": 88
+  },
+  {
+    "match": "^unraid",
+    "category": "nas",
+    "vendor": "Unraid",
+    "platform": "Linux",
+    "model": null,
+    "certainty": 90
+  },
+  {
+    "match": "^synology",
+    "category": "nas",
+    "vendor": "Synology",
+    "platform": "DSM",
+    "model": null,
+    "certainty": 88
+  },
+  {
+    "match": "^ds\\d{3,4}\\b",
+    "category": "nas",
+    "vendor": "Synology",
+    "platform": "DSM",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "^qnap",
+    "category": "nas",
+    "vendor": "QNAP",
+    "platform": "QTS",
+    "model": null,
+    "certainty": 88
+  },
+  {
+    "match": "(?i)^alexa[_-]",
+    "category": "smart_speaker",
+    "vendor": "Amazon",
+    "platform": "Fire OS",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^amazon[_-]",
+    "category": "smart_speaker",
+    "vendor": "Amazon",
+    "platform": "Fire OS",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "(?i)^echo[_-]",
+    "category": "smart_speaker",
+    "vendor": "Amazon",
+    "platform": "Fire OS",
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "(?i)^fire[_-]?tv",
+    "category": "streaming_device",
+    "vendor": "Amazon",
+    "platform": "Fire OS",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^kindle",
+    "category": "tablet",
+    "vendor": "Amazon",
+    "platform": "Fire OS",
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^hubitat",
+    "category": "smart_home",
+    "vendor": "Hubitat",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^smartthings",
+    "category": "smart_home",
+    "vendor": "Samsung",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^ecobee[_-]",
+    "category": "thermostat",
+    "vendor": "Ecobee",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^yale[_-]",
+    "category": "smart_lock",
+    "vendor": "Yale",
+    "platform": null,
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "(?i)^august[_-]",
+    "category": "smart_lock",
+    "vendor": "August",
+    "platform": null,
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "(?i)^ring[_-]",
+    "category": "doorbell",
+    "vendor": "Ring",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^wyze[_-]",
+    "category": "camera",
+    "vendor": "Wyze",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^tp-?link[_-]",
+    "category": "smart_plug",
+    "vendor": "TP-Link",
+    "platform": null,
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "(?i)^kasa[_-]",
+    "category": "smart_plug",
+    "vendor": "TP-Link",
+    "platform": null,
+    "model": null,
+    "certainty": 80
+  },
+  {
+    "match": "(?i)^shelly",
+    "category": "smart_plug",
+    "vendor": "Shelly",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^velop",
+    "category": "mesh_router",
+    "vendor": "Linksys",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^eero",
+    "category": "mesh_router",
+    "vendor": "Amazon",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^orbi",
+    "category": "mesh_router",
+    "vendor": "Netgear",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  },
+  {
+    "match": "(?i)^deco",
+    "category": "mesh_router",
+    "vendor": "TP-Link",
+    "platform": null,
+    "model": null,
+    "certainty": 85
+  }
+]

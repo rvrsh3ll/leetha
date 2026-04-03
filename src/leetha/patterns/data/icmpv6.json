@@ -1,0 +1,82 @@
+[
+  {
+    "hop_limit": 64,
+    "managed": 0,
+    "other": 0,
+    "os_family": "Linux",
+    "device_type": null,
+    "manufacturer": null,
+    "confidence": 0.7,
+    "note": "Linux default RA (hop_limit=64, M=0, O=0)"
+  },
+  {
+    "hop_limit": 255,
+    "managed": 0,
+    "other": 0,
+    "os_family": "Cisco IOS",
+    "device_type": "router",
+    "manufacturer": "Cisco",
+    "confidence": 0.85,
+    "note": "Cisco IOS default RA (hop_limit=255)"
+  },
+  {
+    "hop_limit": 64,
+    "managed": 0,
+    "other": 1,
+    "os_family": "JunOS",
+    "device_type": "router",
+    "manufacturer": "Juniper",
+    "confidence": 0.8,
+    "note": "Juniper JunOS (M=0, O=1)"
+  },
+  {
+    "hop_limit": 64,
+    "managed": 1,
+    "other": 1,
+    "os_family": "RouterOS",
+    "device_type": "router",
+    "manufacturer": "MikroTik",
+    "confidence": 0.85,
+    "note": "MikroTik RouterOS (M=1, O=1)"
+  },
+  {
+    "hop_limit": 128,
+    "managed": 0,
+    "other": 0,
+    "os_family": "Windows Server",
+    "device_type": "server",
+    "manufacturer": "Microsoft",
+    "confidence": 0.75,
+    "note": "Windows Server RRAS (hop_limit=128)"
+  },
+  {
+    "hop_limit": 64,
+    "managed": 0,
+    "other": 0,
+    "os_family": "FreeBSD",
+    "device_type": null,
+    "manufacturer": null,
+    "confidence": 0.65,
+    "note": "FreeBSD default RA"
+  },
+  {
+    "hop_limit": 255,
+    "managed": 0,
+    "other": 0,
+    "os_family": "OpenBSD",
+    "device_type": null,
+    "manufacturer": null,
+    "confidence": 0.7,
+    "note": "OpenBSD RA (hop_limit=255, M=0, O=0)"
+  },
+  {
+    "hop_limit": 64,
+    "managed": 0,
+    "other": 0,
+    "os_family": "EdgeOS",
+    "device_type": "router",
+    "manufacturer": "Ubiquiti",
+    "confidence": 0.6,
+    "note": "Ubiquiti EdgeRouter (based on Vyatta/Linux)"
+  }
+]

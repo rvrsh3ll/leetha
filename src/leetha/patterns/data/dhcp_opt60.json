@@ -1,0 +1,1038 @@
+[
+  {
+    "pattern": "^MSFT\\s+\\d+\\.\\d+",
+    "device_type": "workstation",
+    "manufacturer": "Microsoft",
+    "os_family": "Windows",
+    "confidence": 90
+  },
+  {
+    "pattern": "^MSFT\\s+5\\.0",
+    "device_type": "workstation",
+    "manufacturer": "Microsoft",
+    "os_family": "Windows 2000/XP",
+    "confidence": 85
+  },
+  {
+    "pattern": "^android-dhcp-\\d+",
+    "device_type": "mobile",
+    "manufacturer": null,
+    "os_family": "Android",
+    "confidence": 85
+  },
+  {
+    "pattern": "^dhcpcd-\\d+\\.\\d+\\.\\d+:Linux",
+    "device_type": "workstation",
+    "manufacturer": null,
+    "os_family": "Linux",
+    "confidence": 80
+  },
+  {
+    "pattern": "^dhcpcd-\\d+",
+    "device_type": "workstation",
+    "manufacturer": null,
+    "os_family": "Linux",
+    "confidence": 75
+  },
+  {
+    "pattern": "^udhcp\\s+\\d+",
+    "device_type": "router",
+    "manufacturer": null,
+    "os_family": "Linux (Embedded)",
+    "confidence": 70
+  },
+  {
+    "pattern": "^dhclient",
+    "device_type": "workstation",
+    "manufacturer": null,
+    "os_family": "Linux",
+    "confidence": 70
+  },
+  {
+    "pattern": "^Cisco\\s+AP",
+    "device_type": "access_point",
+    "manufacturer": "Cisco",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Cisco\\s+Systems",
+    "device_type": "network",
+    "manufacturer": "Cisco",
+    "os_family": "IOS",
+    "confidence": 90
+  },
+  {
+    "pattern": "^Cisco-IP-Phone",
+    "device_type": "voip_phone",
+    "manufacturer": "Cisco",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Cisco.*Firepower",
+    "device_type": "firewall",
+    "manufacturer": "Cisco",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Cisco.*ASA",
+    "device_type": "firewall",
+    "manufacturer": "Cisco",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Aruba\\s+AP",
+    "device_type": "access_point",
+    "manufacturer": "Aruba",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^ArubaOS",
+    "device_type": "network",
+    "manufacturer": "Aruba",
+    "os_family": "ArubaOS",
+    "confidence": 90
+  },
+  {
+    "pattern": "^HP\\s+(LaserJet|OfficeJet|DeskJet|Printer)",
+    "device_type": "printer",
+    "manufacturer": "HP",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Hewlett-?Packard",
+    "device_type": "workstation",
+    "manufacturer": "HP",
+    "os_family": null,
+    "confidence": 70
+  },
+  {
+    "pattern": "^EPSON",
+    "device_type": "printer",
+    "manufacturer": "Epson",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Brother",
+    "device_type": "printer",
+    "manufacturer": "Brother",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Canon",
+    "device_type": "printer",
+    "manufacturer": "Canon",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^XEROX",
+    "device_type": "printer",
+    "manufacturer": "Xerox",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Ricoh",
+    "device_type": "printer",
+    "manufacturer": "Ricoh",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Lexmark",
+    "device_type": "printer",
+    "manufacturer": "Lexmark",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Konica.*Minolta",
+    "device_type": "printer",
+    "manufacturer": "Konica Minolta",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Sharp.*MFP",
+    "device_type": "multifunction",
+    "manufacturer": "Sharp",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^AAPLBSDPC/",
+    "device_type": "workstation",
+    "manufacturer": "Apple",
+    "os_family": "macOS",
+    "confidence": 90
+  },
+  {
+    "pattern": "^Polycom",
+    "device_type": "voip_phone",
+    "manufacturer": "Polycom",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Yealink",
+    "device_type": "voip_phone",
+    "manufacturer": "Yealink",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Grandstream",
+    "device_type": "voip_phone",
+    "manufacturer": "Grandstream",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Snom",
+    "device_type": "voip_phone",
+    "manufacturer": "Snom",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Avaya",
+    "device_type": "voip_phone",
+    "manufacturer": "Avaya",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Mitel",
+    "device_type": "voip_phone",
+    "manufacturer": "Mitel",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^SIP",
+    "device_type": "voip_phone",
+    "manufacturer": null,
+    "os_family": null,
+    "confidence": 70
+  },
+  {
+    "pattern": "^VoIP",
+    "device_type": "voip_phone",
+    "manufacturer": null,
+    "os_family": null,
+    "confidence": 70
+  },
+  {
+    "pattern": "^MikroTik",
+    "device_type": "router",
+    "manufacturer": "MikroTik",
+    "os_family": "RouterOS",
+    "confidence": 95
+  },
+  {
+    "pattern": "^(ubnt|UniFi)",
+    "device_type": "access_point",
+    "manufacturer": "Ubiquiti",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Ruckus",
+    "device_type": "access_point",
+    "manufacturer": "Ruckus",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Meraki",
+    "device_type": "access_point",
+    "manufacturer": "Cisco Meraki",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Fortinet",
+    "device_type": "firewall",
+    "manufacturer": "Fortinet",
+    "os_family": "FortiOS",
+    "confidence": 95
+  },
+  {
+    "pattern": "^PaloAlto",
+    "device_type": "firewall",
+    "manufacturer": "Palo Alto",
+    "os_family": "PAN-OS",
+    "confidence": 95
+  },
+  {
+    "pattern": "^SonicWall",
+    "device_type": "firewall",
+    "manufacturer": "SonicWall",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Juniper",
+    "device_type": "router",
+    "manufacturer": "Juniper",
+    "os_family": "JunOS",
+    "confidence": 90
+  },
+  {
+    "pattern": "^F5.*BIG-IP",
+    "device_type": "load_balancer",
+    "manufacturer": "F5",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Citrix.*NetScaler",
+    "device_type": "load_balancer",
+    "manufacturer": "Citrix",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^A10.*Networks",
+    "device_type": "load_balancer",
+    "manufacturer": "A10 Networks",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^VMware",
+    "device_type": "virtual_machine",
+    "manufacturer": "VMware",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^VMware.*ESXi",
+    "device_type": "esxi",
+    "manufacturer": "VMware",
+    "os_family": "ESXi",
+    "confidence": 95
+  },
+  {
+    "pattern": "^Proxmox",
+    "device_type": "proxmox",
+    "manufacturer": "Proxmox",
+    "os_family": "Proxmox VE",
+    "confidence": 95
+  },
+  {
+    "pattern": "^Hyper-V",
+    "device_type": "hyper_v",
+    "manufacturer": "Microsoft",
+    "os_family": "Windows Server",
+    "confidence": 90
+  },
+  {
+    "pattern": "^Citrix.*Xen",
+    "device_type": "xen",
+    "manufacturer": "Citrix",
+    "os_family": "XenServer",
+    "confidence": 90
+  },
+  {
+    "pattern": "^oVirt",
+    "device_type": "kvm_host",
+    "manufacturer": "Red Hat",
+    "os_family": "Linux",
+    "confidence": 85
+  },
+  {
+    "pattern": "^Nutanix",
+    "device_type": "hypervisor",
+    "manufacturer": "Nutanix",
+    "os_family": "AHV",
+    "confidence": 90
+  },
+  {
+    "pattern": "^Docker",
+    "device_type": "docker_host",
+    "manufacturer": "Docker",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Kubernetes",
+    "device_type": "kubernetes_node",
+    "manufacturer": "CNCF",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Rancher",
+    "device_type": "container_host",
+    "manufacturer": "SUSE",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^OpenShift",
+    "device_type": "openshift",
+    "manufacturer": "Red Hat",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^CoreOS",
+    "device_type": "container_host",
+    "manufacturer": "Red Hat",
+    "os_family": "CoreOS",
+    "confidence": 85
+  },
+  {
+    "pattern": "^Flatcar",
+    "device_type": "container_host",
+    "manufacturer": null,
+    "os_family": "Flatcar",
+    "confidence": 85
+  },
+  {
+    "pattern": "^Hikvision",
+    "device_type": "ip_camera",
+    "manufacturer": "Hikvision",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Dahua",
+    "device_type": "ip_camera",
+    "manufacturer": "Dahua",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^AXIS",
+    "device_type": "ip_camera",
+    "manufacturer": "Axis",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Foscam",
+    "device_type": "ip_camera",
+    "manufacturer": "Foscam",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Amcrest",
+    "device_type": "ip_camera",
+    "manufacturer": "Amcrest",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Reolink",
+    "device_type": "ip_camera",
+    "manufacturer": "Reolink",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Vivotek",
+    "device_type": "ip_camera",
+    "manufacturer": "Vivotek",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Mobotix",
+    "device_type": "ip_camera",
+    "manufacturer": "Mobotix",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Avigilon",
+    "device_type": "ip_camera",
+    "manufacturer": "Avigilon",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Hanwha.*Wisenet",
+    "device_type": "ip_camera",
+    "manufacturer": "Hanwha",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Bosch.*Video",
+    "device_type": "ip_camera",
+    "manufacturer": "Bosch",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Philips.*hue",
+    "device_type": "smart_home",
+    "manufacturer": "Philips",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^SmartThings",
+    "device_type": "home_hub",
+    "manufacturer": "Samsung",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Nest",
+    "device_type": "thermostat",
+    "manufacturer": "Google",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^ecobee",
+    "device_type": "thermostat",
+    "manufacturer": "ecobee",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Ring",
+    "device_type": "doorbell",
+    "manufacturer": "Ring",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Amazon.*Echo",
+    "device_type": "smart_speaker",
+    "manufacturer": "Amazon",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Google.*Home",
+    "device_type": "smart_speaker",
+    "manufacturer": "Google",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Sonos",
+    "device_type": "smart_speaker",
+    "manufacturer": "Sonos",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^HomePod",
+    "device_type": "smart_speaker",
+    "manufacturer": "Apple",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Wemo",
+    "device_type": "smart_plug",
+    "manufacturer": "Belkin",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^TP-Link.*Kasa",
+    "device_type": "smart_plug",
+    "manufacturer": "TP-Link",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Shelly",
+    "device_type": "smart_plug",
+    "manufacturer": "Shelly",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Tuya",
+    "device_type": "iot",
+    "manufacturer": "Tuya",
+    "os_family": null,
+    "confidence": 80
+  },
+  {
+    "pattern": "^LIFX",
+    "device_type": "smart_lighting",
+    "manufacturer": "LIFX",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Lutron",
+    "device_type": "smart_lighting",
+    "manufacturer": "Lutron",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^August",
+    "device_type": "smart_lock",
+    "manufacturer": "August",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Synology",
+    "device_type": "nas",
+    "manufacturer": "Synology",
+    "os_family": "DSM",
+    "confidence": 95
+  },
+  {
+    "pattern": "^QNAP",
+    "device_type": "nas",
+    "manufacturer": "QNAP",
+    "os_family": "QTS",
+    "confidence": 95
+  },
+  {
+    "pattern": "^Western.*Digital.*My.*Cloud",
+    "device_type": "nas",
+    "manufacturer": "Western Digital",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Buffalo",
+    "device_type": "nas",
+    "manufacturer": "Buffalo",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^TrueNAS",
+    "device_type": "nas",
+    "manufacturer": null,
+    "os_family": "TrueNAS",
+    "confidence": 90
+  },
+  {
+    "pattern": "^FreeNAS",
+    "device_type": "nas",
+    "manufacturer": null,
+    "os_family": "FreeNAS",
+    "confidence": 85
+  },
+  {
+    "pattern": "^NetApp",
+    "device_type": "nas",
+    "manufacturer": "NetApp",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^EMC",
+    "device_type": "storage_array",
+    "manufacturer": "Dell EMC",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Pure.*Storage",
+    "device_type": "storage_array",
+    "manufacturer": "Pure Storage",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Siemens.*S7",
+    "device_type": "plc",
+    "manufacturer": "Siemens",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Siemens.*SIMATIC",
+    "device_type": "plc",
+    "manufacturer": "Siemens",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Siemens.*SCALANCE",
+    "device_type": "industrial_switch",
+    "manufacturer": "Siemens",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Schneider.*Modicon",
+    "device_type": "plc",
+    "manufacturer": "Schneider Electric",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Schneider",
+    "device_type": "plc",
+    "manufacturer": "Schneider Electric",
+    "os_family": null,
+    "confidence": 80
+  },
+  {
+    "pattern": "^Allen-Bradley",
+    "device_type": "plc",
+    "manufacturer": "Rockwell",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Rockwell",
+    "device_type": "plc",
+    "manufacturer": "Rockwell",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^ABB.*AC500",
+    "device_type": "plc",
+    "manufacturer": "ABB",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^ABB",
+    "device_type": "plc",
+    "manufacturer": "ABB",
+    "os_family": null,
+    "confidence": 80
+  },
+  {
+    "pattern": "^GE.*Fanuc",
+    "device_type": "plc",
+    "manufacturer": "GE",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Omron",
+    "device_type": "plc",
+    "manufacturer": "Omron",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Mitsubishi.*MELSEC",
+    "device_type": "plc",
+    "manufacturer": "Mitsubishi",
+    "os_family": null,
+    "confidence": 95
+  },
+  {
+    "pattern": "^Beckhoff",
+    "device_type": "plc",
+    "manufacturer": "Beckhoff",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Phoenix.*Contact",
+    "device_type": "plc",
+    "manufacturer": "Phoenix Contact",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^WAGO",
+    "device_type": "plc",
+    "manufacturer": "WAGO",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Moxa",
+    "device_type": "industrial_switch",
+    "manufacturer": "Moxa",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Hirschmann",
+    "device_type": "industrial_switch",
+    "manufacturer": "Hirschmann",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Red.*Lion",
+    "device_type": "industrial_switch",
+    "manufacturer": "Red Lion",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Advantech",
+    "device_type": "industrial_switch",
+    "manufacturer": "Advantech",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^BACnet",
+    "device_type": "building_automation",
+    "manufacturer": null,
+    "os_family": null,
+    "confidence": 80
+  },
+  {
+    "pattern": "^Tridium.*Niagara",
+    "device_type": "building_automation",
+    "manufacturer": "Tridium",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Johnson.*Controls",
+    "device_type": "building_automation",
+    "manufacturer": "Johnson Controls",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Snort",
+    "device_type": "ids_ips",
+    "manufacturer": "Cisco",
+    "os_family": null,
+    "confidence": 80
+  },
+  {
+    "pattern": "^Suricata",
+    "device_type": "ids_ips",
+    "manufacturer": "OISF",
+    "os_family": null,
+    "confidence": 80
+  },
+  {
+    "pattern": "^Wazuh",
+    "device_type": "ids_ips",
+    "manufacturer": "Wazuh",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Splunk",
+    "device_type": "siem",
+    "manufacturer": "Splunk",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^QRadar",
+    "device_type": "siem",
+    "manufacturer": "IBM",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^ArcSight",
+    "device_type": "siem",
+    "manufacturer": "Micro Focus",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Squid",
+    "device_type": "proxy",
+    "manufacturer": null,
+    "os_family": null,
+    "confidence": 80
+  },
+  {
+    "pattern": "^Asterisk",
+    "device_type": "pbx",
+    "manufacturer": "Sangoma",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^FreePBX",
+    "device_type": "pbx",
+    "manufacturer": "Sangoma",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^3CX",
+    "device_type": "pbx",
+    "manufacturer": "3CX",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Philips.*Healthcare",
+    "device_type": "medical_device",
+    "manufacturer": "Philips",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^GE.*Healthcare",
+    "device_type": "medical_device",
+    "manufacturer": "GE",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Siemens.*Healthineers",
+    "device_type": "medical_device",
+    "manufacturer": "Siemens",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Roku",
+    "device_type": "streaming_device",
+    "manufacturer": "Roku",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Apple.*TV",
+    "device_type": "streaming_device",
+    "manufacturer": "Apple",
+    "os_family": "tvOS",
+    "confidence": 90
+  },
+  {
+    "pattern": "^Chromecast",
+    "device_type": "streaming_device",
+    "manufacturer": "Google",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Fire.*TV",
+    "device_type": "streaming_device",
+    "manufacturer": "Amazon",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Samsung.*Smart.*TV",
+    "device_type": "smart_tv",
+    "manufacturer": "Samsung",
+    "os_family": "Tizen",
+    "confidence": 90
+  },
+  {
+    "pattern": "^LG.*Smart.*TV",
+    "device_type": "smart_tv",
+    "manufacturer": "LG",
+    "os_family": "webOS",
+    "confidence": 90
+  },
+  {
+    "pattern": "^Sony.*Bravia",
+    "device_type": "smart_tv",
+    "manufacturer": "Sony",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^PlayStation",
+    "device_type": "game_console",
+    "manufacturer": "Sony",
+    "os_family": "PlayStation",
+    "confidence": 95
+  },
+  {
+    "pattern": "^Xbox",
+    "device_type": "game_console",
+    "manufacturer": "Microsoft",
+    "os_family": "Xbox",
+    "confidence": 95
+  },
+  {
+    "pattern": "^Nintendo",
+    "device_type": "game_console",
+    "manufacturer": "Nintendo",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Dell.*Wyse",
+    "device_type": "thin_client",
+    "manufacturer": "Dell",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^HP.*Thin.*Client",
+    "device_type": "thin_client",
+    "manufacturer": "HP",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^IGEL",
+    "device_type": "thin_client",
+    "manufacturer": "IGEL",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^MultiTech",
+    "device_type": "iot_gateway",
+    "manufacturer": "MultiTech",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Digi.*Gateway",
+    "device_type": "iot_gateway",
+    "manufacturer": "Digi",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^Sierra.*Wireless",
+    "device_type": "iot_gateway",
+    "manufacturer": "Sierra Wireless",
+    "os_family": null,
+    "confidence": 85
+  },
+  {
+    "pattern": "^android-dhcp-1[3-5]",
+    "device_type": "mobile",
+    "manufacturer": null,
+    "os_family": "Android 13-15",
+    "confidence": 88
+  },
+  {
+    "pattern": "^android-dhcp-1[0-2]",
+    "device_type": "mobile",
+    "manufacturer": null,
+    "os_family": "Android 10-12",
+    "confidence": 85
+  },
+  {
+    "pattern": "^Google[_-]?Nest",
+    "device_type": "smart_speaker",
+    "manufacturer": "Google",
+    "os_family": null,
+    "confidence": 90
+  },
+  {
+    "pattern": "^Google[_-]?TV",
+    "device_type": "streaming_device",
+    "manufacturer": "Google",
+    "os_family": "Google TV",
+    "confidence": 90
+  }
+]
