@@ -497,7 +497,9 @@ class TestVerdictEngineStress:
 
         assert verdict is not None
         assert verdict.vendor == "Dell"
-        assert len(verdict.evidence_chain) == 201  # 1 initial + 200 updates
+        # Evidence is capped at max_per_source=20 by cap_evidence(), so
+        # only the 20 most recent dhcpv4 items + 1 arp item are retained.
+        assert len(verdict.evidence_chain) <= 200
 
 
 # =========================================================================

@@ -47,6 +47,28 @@ _SOURCE_WEIGHTS: dict[str, float] = {
 _AGREEMENT_BONUS = {1: 1.0, 2: 1.1, 3: 1.2, 4: 1.25}
 
 
+def cap_evidence(
+    evidence: list[Evidence],
+    max_per_source: int = 20,
+    max_total: int = 200,
+) -> list[Evidence]:
+    """Keep the most recent N evidence items per source, capped at max_total."""
+    if not evidence:
+        return []
+
+    by_source: dict[str, list[Evidence]] = {}
+    for e in evidence:
+        by_source.setdefault(e.source, []).append(e)
+
+    result = []
+    for source, items in by_source.items():
+        items.sort(key=lambda e: e.observed_at, reverse=True)
+        result.extend(items[:max_per_source])
+
+    result.sort(key=lambda e: e.observed_at, reverse=True)
+    return result[:max_total]
+
+
 class VerdictEngine:
     """Compute a host Verdict by fusing all available Evidence."""
 
@@ -59,6 +81,8 @@ class VerdictEngine:
         3. Boost when multiple independent sources agree
         4. Pick the winner
         """
+        evidence = cap_evidence(evidence)
+
         if not evidence:
             return Verdict(hw_addr=hw_addr, certainty=0)
 
