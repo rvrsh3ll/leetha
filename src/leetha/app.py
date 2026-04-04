@@ -14,21 +14,17 @@ is used for backward compatibility.
 from __future__ import annotations
 
 import asyncio
-import ipaddress
-import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from leetha.capture.engine import CaptureEngine
 from leetha.capture.protocols import ParsedPacket
-from leetha.capture.packets import CapturedPacket
 from leetha.core.pipeline import Pipeline
 from leetha.fingerprint.engine import FingerprintEngine
-from leetha.fingerprint.evidence import FingerprintMatch, aggregate_evidence
 from leetha.pipeline import PacketRouter
 from leetha.store.database import Database
 from leetha.store.store import Store
-from leetha.store.models import Device, DeviceIdentity, Observation
+from leetha.store.models import Device, DeviceIdentity
 from leetha.alerts.engine import AlertEngine
 from leetha.config import get_config
 from leetha.probe.scheduler import ProbeScheduler
@@ -43,14 +39,6 @@ from leetha.fingerprint.mac_intel import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _is_private_ip(ip: str) -> bool:
-    """Check if an IPv4 address is private (RFC 1918 / link-local)."""
-    try:
-        return ipaddress.ip_address(ip).is_private
-    except ValueError:
-        return False
 
 
 def _clean_hostname(raw: str | None) -> str | None:
@@ -88,38 +76,6 @@ def _clean_hostname(raw: str | None) -> str | None:
 
     name = name.rstrip(".")
     return name if name else None
-
-
-def _prefer_ip(existing_ip: str | None, new_ip: str | None) -> str | None:
-    """Choose the best IP: prefer private over public, newer over older.
-
-    On a network assessment, internal/private IPs are what matter for
-    device identification. Public IPs (from DNS responses, transit traffic)
-    should never overwrite a known private IP.
-    """
-    if not new_ip:
-        return existing_ip
-    if not existing_ip:
-        return new_ip
-
-    existing_private = _is_private_ip(existing_ip)
-    new_private = _is_private_ip(new_ip)
-
-    # Private always wins over public
-    if existing_private and not new_private:
-        return existing_ip
-    if new_private and not existing_private:
-        return new_ip
-
-    # Both same class — prefer the newer one
-    return new_ip
-
-
-def _json_default(obj):
-    """Handle non-serializable types in packet data (e.g. bytes from DHCP)."""
-    if isinstance(obj, bytes):
-        return obj.hex()
-    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 class LeethaApp:
@@ -348,62 +304,23 @@ class LeethaApp:
             return
 
     async def _reevaluate_unknown_devices(self):
-        """Re-fingerprint devices that were classified before Huginn loaded.
-
-        Runs once, 60 seconds after startup, to fix early classifications
-        that missed the Huginn MAC vendor database.
-        """
+        """Re-evaluate devices with low confidence after fingerprint databases load."""
         await asyncio.sleep(60)
+        if not self.pipeline:
+            return
         try:
-            devices = await self.db.list_devices()
-            reclassified = 0
-            for dev in devices:
-                needs_reeval = (
-                    dev.device_type in (None, "unknown", "Unknown")
-                    or dev.manufacturer is None
-                    or dev.confidence < 50
-                )
-                if not needs_reeval:
-                    continue
-
-                # Re-run OUI + Huginn lookup with now-loaded data
-                matches = self.fingerprint_engine.lookup.lookup_mac(dev.mac)
-
-                # Also try hostname lookup if hostname is set
-                if dev.hostname:
-                    hn_match = self.fingerprint_engine.lookup.lookup_hostname(dev.hostname)
-                    if hn_match:
-                        matches.append(hn_match)
-
-                if not matches:
-                    continue
-
-                evidence = aggregate_evidence(matches)
-                new_mfr = evidence.get("manufacturer")
-                new_type = evidence.get("device_type")
-                new_os = evidence.get("os_family")
-                changed = False
-
-                if new_mfr and not dev.manufacturer:
-                    dev.manufacturer = new_mfr
-                    changed = True
-                if new_type and new_type != "Unknown" and dev.device_type in (None, "unknown", "Unknown"):
-                    dev.device_type = new_type
-                    changed = True
-                if new_os and not dev.os_family:
-                    dev.os_family = new_os
-                    changed = True
-                if changed:
-                    new_conf = int(evidence.get("confidence", 0) * 100)
-                    if new_conf > dev.confidence:
-                        dev.confidence = new_conf
-                    await self.db.upsert_device(dev)
-                    reclassified += 1
-
-            if reclassified:
-                logger.info("Re-evaluated %d devices with updated fingerprint data", reclassified)
+            verdicts = await self.store.verdicts.find_all(limit=1000)
+            low_confidence = [v for v in verdicts if v.certainty < 50]
+            for v in low_confidence:
+                # Recompute with existing evidence
+                new_verdict = self.pipeline.verdict_engine.compute(
+                    v.hw_addr, v.evidence_chain)
+                if new_verdict.certainty != v.certainty:
+                    await self.store.verdicts.upsert(new_verdict)
+                    logger.info("Re-evaluated %s: %d%% -> %d%%",
+                               v.hw_addr, v.certainty, new_verdict.certainty)
         except Exception:
-            logger.debug("Device re-evaluation failed", exc_info=True)
+            logger.debug("Re-evaluation failed", exc_info=True)
 
     async def _analysis_loop(self):
         """Periodic analysis: stale source checks, infra offline, etc. Runs every 30 seconds."""
@@ -517,382 +434,26 @@ class LeethaApp:
         await self.spoofing_detector.learn_gateway(
             mac=mac, ip=ip, source=source, interface=interface)
 
-    async def _probe_result_callback(self, mac: str, match):
-        """Feed probe results back into device fingerprinting."""
-        from leetha.fingerprint.evidence import FingerprintMatch
-        if not isinstance(match, FingerprintMatch):
+    async def _probe_result_callback(self, mac, match):
+        """Feed probe results into the pipeline as Evidence."""
+        if not self.pipeline:
             return
-        from leetha.capture.protocols import ParsedPacket
-        from datetime import datetime
-        device = self._evidence_to_device(
-            ParsedPacket(protocol="probe", src_mac=mac, src_ip="",
-                         timestamp=datetime.now()),
-            {"matches": [match], "device_type": match.device_type,
-             "manufacturer": match.manufacturer, "os_family": match.os_family,
-             "os_version": match.os_version,
-             "confidence": int(match.confidence * 100)},
+        from leetha.evidence.models import Evidence
+        evidence = Evidence(
+            source="probe",
+            method="active",
+            certainty=0.85,
+            vendor=getattr(match, 'manufacturer', None),
+            platform=getattr(match, 'os_family', None),
+            platform_version=getattr(match, 'os_version', None),
+            model=getattr(match, 'model', None),
+            category=getattr(match, 'device_type', None),
+            raw={"probe_result": str(match)},
         )
-        if device:
-            await self.db.upsert_device(device)
-
-    def _fingerprint_packet(self, packet: ParsedPacket) -> list[FingerprintMatch]:
-        """Route packet to appropriate fingerprint method.
-
-        Each protocol parser may include extra fields in packet.data that the
-        fingerprint engine method does not accept (e.g. ``window_scale`` for
-        TCP SYN, ``message_type`` for DHCPv4).  We extract only the parameters
-        each method expects rather than spreading the full data dict.
-        """
-        engine = self.fingerprint_engine
-        data = packet.data
-
-        if packet.protocol == "tcp_syn":
-            return engine.process_tcp_syn(
-                src_mac=packet.src_mac,
-                src_ip=packet.src_ip,
-                ttl=data["ttl"],
-                window_size=data["window_size"],
-                mss=data.get("mss"),
-                tcp_options=data.get("tcp_options", ""),
-            )
-        elif packet.protocol == "dhcpv4":
-            return engine.process_dhcpv4(
-                client_mac=packet.src_mac,
-                opt55=data.get("opt55"),
-                opt60=data.get("opt60"),
-                hostname=data.get("hostname"),
-                client_id=data.get("client_id"),
-            )
-        elif packet.protocol == "dhcpv6":
-            return engine.process_dhcpv6(
-                client_mac=packet.src_mac,
-                oro=data.get("oro"),
-                duid=data.get("duid"),
-                vendor_class=data.get("vendor_class"),
-                enterprise_id=data.get("enterprise_id"),
-                fqdn=data.get("fqdn"),
-            )
-        elif packet.protocol == "mdns":
-            return engine.process_mdns(
-                src_mac=packet.src_mac,
-                src_ip=packet.src_ip,
-                service_type=data["service_type"],
-                name=data.get("name"),
-                packet_data=data,
-            )
-        elif packet.protocol == "ssdp":
-            return engine.process_ssdp(
-                src_mac=packet.src_mac, src_ip=packet.src_ip,
-                server=data.get("server"), st=data.get("st"),
-            )
-        elif packet.protocol == "netbios":
-            return engine.process_netbios(
-                src_mac=packet.src_mac, src_ip=packet.src_ip,
-                query_name=data["query_name"], query_type=data.get("query_type", "llmnr"),
-                netbios_suffix=data.get("netbios_suffix"),
-            )
-        elif packet.protocol == "tls":
-            return engine.process_tls(
-                src_mac=packet.src_mac,
-                src_ip=packet.src_ip,
-                ja3_hash=data["ja3_hash"],
-                ja4=data["ja4"],
-                sni=data.get("sni"),
-            )
-        elif packet.protocol == "arp":
-            return engine.process_arp(
-                src_mac=packet.src_mac,
-                src_ip=packet.src_ip,
-            )
-        elif packet.protocol == "dns":
-            return engine.process_dns(
-                src_mac=packet.src_mac, src_ip=packet.src_ip, **packet.data
-            )
-        elif packet.protocol == "icmpv6":
-            return engine.process_icmpv6(
-                src_mac=packet.src_mac, src_ip=packet.src_ip, **packet.data
-            )
-        elif packet.protocol == "ip_observed":
-            return engine.process_ip_observed(
-                src_mac=packet.src_mac,
-                src_ip=packet.src_ip,
-                ttl=data.get("ttl", 0),
-                ttl_os_hint=data.get("ttl_os_hint", ""),
-            )
-        elif packet.protocol == "dns_answer":
-            return engine.process_dns_answer(
-                query_name=data.get("query_name", ""),
-                hostname=data.get("hostname"),
-            )
-        elif packet.protocol == "http_useragent":
-            return engine.process_http_useragent(
-                src_mac=packet.src_mac,
-                user_agent=data.get("user_agent", ""),
-                host=data.get("host"),
-            )
-        elif packet.protocol == "lldp":
-            return engine.process_lldp(
-                src_mac=packet.src_mac,
-                system_name=data.get("system_name", ""),
-                system_description=data.get("system_description", ""),
-                capabilities=data.get("capabilities", []),
-                management_ip=data.get("management_ip"),
-            )
-        elif packet.protocol == "cdp":
-            return engine.process_cdp(
-                src_mac=packet.src_mac,
-                device_id=data.get("device_id", ""),
-                platform=data.get("platform", ""),
-                software_version=data.get("software_version", ""),
-                capabilities=data.get("capabilities", []),
-                management_ip=data.get("management_ip"),
-            )
-        elif packet.protocol == "stp":
-            return engine.process_stp(
-                src_mac=packet.src_mac,
-                bridge_priority=data.get("bridge_priority", 32768),
-                bridge_mac=data.get("bridge_mac", ""),
-                is_root=data.get("is_root", False),
-            )
-        elif packet.protocol == "snmp":
-            return engine.process_snmp(
-                src_mac=packet.src_mac,
-                version=data.get("version", ""),
-                community=data.get("community", ""),
-                pdu_type=data.get("pdu_type", ""),
-                sys_descr=data.get("sys_descr", ""),
-                sys_name=data.get("sys_name", ""),
-                sys_object_id=data.get("sys_object_id", ""),
-            )
-        elif packet.protocol == "service_banner":
-            return engine.process_service_banner(
-                src_mac=packet.src_mac,
-                service=data.get("service", ""),
-                software=data.get("software"),
-                version=data.get("version"),
-                server_port=data.get("server_port"),
-            )
-        elif packet.protocol == "ws_discovery":
-            return engine.process_ws_discovery(
-                src_mac=packet.src_mac,
-                device_types=data.get("device_types"),
-                manufacturer=data.get("manufacturer"),
-                model=data.get("model"),
-                firmware=data.get("firmware"),
-            )
-        elif packet.protocol == "ntp":
-            return engine.process_ntp(
-                src_mac=packet.src_mac,
-                mode=data.get("mode", ""),
-                stratum=data.get("stratum", 0),
-                reference_id=data.get("reference_id", ""),
-            )
-        elif packet.protocol in ("modbus", "bacnet", "coap", "mqtt", "enip"):
-            return engine.process_iot_scada(
-                src_mac=packet.src_mac,
-                protocol=packet.protocol,
-                **data,
-            )
-        return []
-
-    async def _persist_packet_metadata(self, packet: ParsedPacket) -> None:
-        """Save hostname / IP from a packet even when no fingerprint matched.
-
-        Many protocols (NetBIOS, LLMNR, mDNS, DHCP) carry the device hostname
-        but may not match any fingerprint pattern.  Without this, the hostname
-        is silently discarded on the ``if not matches: continue`` path.
-
-        For dns_answer PTR records the hostname belongs to the *queried* device
-        (identified by answer_ip), not the DNS server that sent the response.
-
-        Reads are direct (safe under WAL); writes go through the database
-        directly (Pipeline handles its own persistence).
-        """
-        data = packet.data
-
-        if packet.protocol == "dns_answer":
-            # PTR records: associate hostname with the device at answer_ip
-            answer_ip = data.get("answer_ip")
-            ptr_hostname = data.get("hostname")
-            if answer_ip and ptr_hostname:
-                existing = await self.db.get_device_by_ip(answer_ip)
-                ptr_clean = _clean_hostname(ptr_hostname)
-                if existing and ptr_clean and (not existing.hostname or len(ptr_clean) < len(existing.hostname)):
-                    existing.hostname = ptr_clean
-                    await self.db.upsert_device(existing)
-            return
-
-        hostname = (
-            data.get("hostname")
-            or data.get("fqdn")
-            or data.get("friendly_name")
-            or data.get("name")
-        )
-        # query_name is a hostname for NetBIOS/LLMNR, but NOT for DNS queries
-        if not hostname and packet.protocol != "dns":
-            hostname = data.get("query_name")
-
-        hostname = _clean_hostname(hostname)
-
-        # Extract valid IPs from the packet
-        src_ip = packet.src_ip
-        ip_v4 = src_ip if (src_ip and "." in src_ip and src_ip != "0.0.0.0") else None
-        ip_v6 = src_ip if (src_ip and ":" in src_ip and src_ip != "::") else None
-
-        if not hostname and not ip_v4 and not ip_v6:
-            return
-
-        existing = await self.db.get_device(packet.src_mac)
-        if existing is not None:
-            changed = False
-            # Update hostname — prefer a cleaner/shorter name over a longer one
-            if hostname and (not existing.hostname or len(hostname) < len(existing.hostname)):
-                existing.hostname = hostname
-                changed = True
-            # Use IP preference: private always wins over public
-            better_v4 = _prefer_ip(existing.ip_v4, ip_v4)
-            if better_v4 != existing.ip_v4:
-                existing.ip_v4 = better_v4
-                changed = True
-            if ip_v6 and not existing.ip_v6:
-                existing.ip_v6 = ip_v6
-                changed = True
-            if changed:
-                await self.db.upsert_device(existing)
-        else:
-            # Device not yet in DB — create a minimal record so the IP
-            # is captured even without a fingerprint match
-            from leetha.fingerprint.mac_intel import is_randomized_mac
-            device = Device(
-                mac=packet.src_mac,
-                ip_v4=ip_v4,
-                ip_v6=ip_v6,
-                hostname=hostname,
-                is_randomized_mac=is_randomized_mac(packet.src_mac),
-            )
-            if self.is_local_device(device.mac):
-                device.alert_status = "self"
-            await self.db.upsert_device(device)
-
-    def _evidence_to_device(self, packet: ParsedPacket, evidence: dict) -> Device:
-        """Convert aggregated evidence to a Device model."""
-        mac = packet.src_mac
-        hostname = (
-            packet.data.get("hostname")
-            or packet.data.get("fqdn")
-            or packet.data.get("friendly_name")  # mDNS TXT fn= field
-            or packet.data.get("name")
-        )
-        # query_name is a hostname for NetBIOS/LLMNR, but NOT for DNS queries
-        if not hostname and packet.protocol != "dns":
-            hostname = packet.data.get("query_name")
-
-        hostname = _clean_hostname(hostname)
-
-        # Only store real IPs — 0.0.0.0 and :: are meaningless placeholders
-        src_ip = packet.src_ip
-        ip_v4 = src_ip if ("." in src_ip and src_ip != "0.0.0.0") else None
-        ip_v6 = src_ip if (":" in src_ip and src_ip != "::") else None
-
-        # Use model hint for more specific device identification when available
-        # e.g. "Google Home" instead of "smart_speaker", "Chromecast" instead of "media_player"
-        # BUT only when the OS hasn't been confirmed as a general-purpose OS by
-        # TCP/p0f/banner — a Linux box with a Google MAC is NOT a Google Home.
-        device_type = evidence.get("device_type")
-        model = evidence.get("model")
-        os_confirmed = evidence.get("os_confirmed", False)
-
-        if model and not os_confirmed and device_type in (
-            "smart_speaker", "media_player", "smart_tv", "phone",
-            "router", "switch", "access_point", "iot", "thermostat",
-            "ip_camera", "doorbell", "smart_display", "game_console",
-        ):
-            device_type = model
-
-        return Device(
-            mac=mac,
-            ip_v4=ip_v4,
-            ip_v6=ip_v6,
-            manufacturer=evidence.get("manufacturer"),
-            device_type=device_type,
-            os_family=evidence.get("os_family"),
-            os_version=evidence.get("os_version"),
-            hostname=hostname,
-            confidence=int(evidence.get("confidence", 0) * 100),
-            raw_evidence=evidence.get("evidence", []),
-            is_randomized_mac=is_randomized_mac(mac),
-        )
-
-    @staticmethod
-    def _merge_device(existing: Device, new: Device) -> Device:
-        """Merge new packet-derived device data with existing DB record.
-
-        When new evidence has HIGHER confidence, its classifications win.
-        This ensures that a device initially classified from weak evidence
-        (ARP at 10%) gets properly reclassified when strong evidence arrives
-        (mDNS at 90%).
-        """
-        # Prefer private IPs over public; within same class prefer newer
-        new.ip_v4 = _prefer_ip(existing.ip_v4, new.ip_v4)
-        new.ip_v6 = new.ip_v6 or existing.ip_v6
-
-        # For classification fields: if new evidence is stronger, use it.
-        # If new is weaker or empty, keep existing.
-        stronger = new.confidence >= existing.confidence
-
-        if stronger and new.manufacturer:
-            pass  # keep new.manufacturer
-        else:
-            new.manufacturer = new.manufacturer or existing.manufacturer
-
-        if stronger and new.device_type and new.device_type != "Unknown":
-            pass  # keep new.device_type
-        elif new.device_type == "Unknown" and existing.device_type:
-            # New evidence says "Unknown" — this often means a multi-product
-            # vendor filter dropped an unreliable OUI type.  Keep existing
-            # ONLY if it came from protocol-level evidence (mDNS, SSDP, etc.),
-            # not from a previous OUI/Huginn guess.
-            # For simplicity: keep existing if confidence is high (>70%)
-            # meaning protocol evidence confirmed it.
-            if existing.confidence >= 70:
-                new.device_type = existing.device_type
-            else:
-                new.device_type = "Unknown"
-        else:
-            new.device_type = (
-                new.device_type if new.device_type and new.device_type != "Unknown"
-                else existing.device_type
-            )
-
-        if stronger and new.os_family:
-            pass  # keep new.os_family
-        else:
-            new.os_family = new.os_family or existing.os_family
-
-        new.os_version = new.os_version or existing.os_version
-
-        # Hostname: prefer shorter (cleaner) name or newer non-empty name
-        if new.hostname and existing.hostname:
-            new.hostname = new.hostname if len(new.hostname) <= len(existing.hostname) else existing.hostname
-        else:
-            new.hostname = new.hostname or existing.hostname
-
-        new.confidence = max(new.confidence, existing.confidence)
-        new.alert_status = existing.alert_status  # preserve admin status
-        new.correlated_mac = new.correlated_mac or existing.correlated_mac
-        new.identity_id = new.identity_id or existing.identity_id
-
-        # Preserve manual override from existing device
-        new.manual_override = new.manual_override or existing.manual_override
-
-        # Apply manual override — overrides always win over automated fingerprinting
-        if new.manual_override:
-            for field in ("device_type", "manufacturer", "os_family", "os_version"):
-                val = new.manual_override.get(field)
-                if val is not None:
-                    setattr(new, field, val)
-
-        return new
+        self.pipeline._evidence_buffer[mac].append(evidence)
+        verdict = self.pipeline.verdict_engine.compute(
+            mac, self.pipeline._evidence_buffer[mac])
+        await self.store.verdicts.upsert(verdict)
 
     async def _assign_identity(self, device: Device, fingerprint: dict) -> None:
         """Find or create an identity for this device.
@@ -970,19 +531,3 @@ class LeethaApp:
             if value and key not in identity.correlation_fingerprint:
                 identity.correlation_fingerprint[key] = value
 
-    def _packet_to_observation(
-        self, packet: ParsedPacket, matches: list[FingerprintMatch]
-    ) -> Observation:
-        """Convert packet + matches to an Observation model."""
-        return Observation(
-            device_mac=packet.src_mac,
-            source_type=packet.protocol,
-            raw_data=json.dumps(packet.data, default=_json_default),
-            match_result=json.dumps([
-                {"source": m.source, "confidence": m.confidence}
-                for m in matches
-            ]),
-            confidence=int(max((m.confidence for m in matches), default=0) * 100),
-            interface=packet.interface,
-            network=packet.network,
-        )
