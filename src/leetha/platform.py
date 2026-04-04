@@ -243,6 +243,44 @@ def get_home_dir() -> Path:
     return Path.home()
 
 
+def fix_ownership(path: Path) -> None:
+    """Chown *path* back to the invoking user when running under sudo.
+
+    When leetha is launched via ``sudo``, files it creates are owned by
+    root.  This helper restores ownership to the real user (identified
+    by ``SUDO_UID`` / ``SUDO_GID``) so that subsequent non-root runs
+    and capability-based runs can access them.
+
+    No-op on Windows or when not running under sudo.
+    """
+    if PLATFORM == "windows":
+        return
+    sudo_uid = os.environ.get("SUDO_UID")
+    sudo_gid = os.environ.get("SUDO_GID")
+    if not sudo_uid or not sudo_gid:
+        return
+    uid, gid = int(sudo_uid), int(sudo_gid)
+    try:
+        os.chown(path, uid, gid)
+    except OSError:
+        pass
+
+
+def fix_ownership_recursive(directory: Path) -> None:
+    """Chown a directory and all files within it back to the sudo user.
+
+    Walks *directory* and calls :func:`fix_ownership` on every entry.
+    Safe to call when not under sudo (no-op).
+    """
+    if PLATFORM == "windows":
+        return
+    if not os.environ.get("SUDO_UID"):
+        return
+    fix_ownership(directory)
+    for child in directory.rglob("*"):
+        fix_ownership(child)
+
+
 def has_live_terminal() -> bool:
     """Return True when stdout is connected to a real terminal (not Windows)."""
     if PLATFORM == "windows":

@@ -130,10 +130,15 @@ class LeethaApp:
 
     async def start(self):
         """Initialize DB and start capture."""
+        from leetha.platform import fix_ownership_recursive
         self.config.cache_dir.mkdir(parents=True, exist_ok=True)
         self.config.data_dir.mkdir(parents=True, exist_ok=True)
         await self.db.initialize()
         await self.store.initialize()
+        # When running under sudo, fix ownership so the real user
+        # can access the DB and data files without sudo next time.
+        fix_ownership_recursive(self.config.cache_dir)
+        fix_ownership_recursive(self.config.data_dir)
         await self.spoofing_detector.initialize()
         loop = asyncio.get_running_loop()
 
