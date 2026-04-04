@@ -274,6 +274,177 @@ def _match_lpd(payload: bytes) -> dict | None:
     return None
 
 
+def _match_mqtt(payload: bytes) -> dict | None:
+    if len(payload) < 4:
+        return None
+    if payload[0] != 0x20:
+        return None
+    result: dict = {"service": "mqtt", "raw_banner": payload[:4].hex()}
+    result["connect_return_code"] = payload[3]
+    return result
+
+
+def _match_sip(payload: bytes) -> dict | None:
+    text = payload.decode("ascii", errors="replace")
+    if not (text.startswith("SIP/") or "SIP/2.0" in text):
+        return None
+    result: dict = {"service": "sip", "raw_banner": text.strip()}
+    m = re.search(r"Server:\s*(.+?)(?:\r?\n)", text)
+    if m:
+        result["software"] = m.group(1).strip()
+    return result
+
+
+def _match_rtsp(payload: bytes) -> dict | None:
+    text = payload.decode("ascii", errors="replace")
+    if not text.startswith("RTSP/"):
+        return None
+    result: dict = {"service": "rtsp", "raw_banner": text.strip()}
+    m = re.search(r"Server:\s*(.+?)(?:\r?\n)", text)
+    if m:
+        result["software"] = m.group(1).strip()
+    return result
+
+
+def _match_ldap(payload: bytes) -> dict | None:
+    if len(payload) < 6:
+        return None
+    if payload[0] != 0x30:
+        return None
+    # Look for BindResponse (0x61) or SearchResultDone (0x65) application tag
+    found = False
+    for i in range(2, min(len(payload), 16)):
+        if payload[i] in (0x61, 0x65):
+            found = True
+            break
+    if not found:
+        return None
+    return {"service": "ldap", "raw_banner": payload[:16].hex()}
+
+
+def _match_cassandra(payload: bytes) -> dict | None:
+    if len(payload) < 4:
+        return None
+    # Response: high nibble of byte 0 has bit 7 set (0x80+)
+    if payload[0] & 0x80 == 0:
+        return None
+    opcode = payload[3]
+    if opcode not in (0x02, 0x06):
+        return None
+    return {"service": "cassandra", "raw_banner": payload[:8].hex()}
+
+
+def _match_elasticsearch(payload: bytes) -> dict | None:
+    text = payload.decode("ascii", errors="replace")
+    if not text.startswith("HTTP/"):
+        return None
+    if '"cluster_name"' not in text:
+        return None
+    result: dict = {
+        "service": "elasticsearch",
+        "software": "Elasticsearch",
+        "raw_banner": text.strip(),
+    }
+    m = re.search(r'"number"\s*:\s*"([\d.]+)"', text)
+    if m:
+        result["version"] = m.group(1)
+    return result
+
+
+def _match_amqp(payload: bytes) -> dict | None:
+    if len(payload) < 4:
+        return None
+    if payload[:4] == b"AMQP":
+        # Protocol header, e.g. AMQP\x00\x00\x09\x01
+        result: dict = {"service": "amqp", "raw_banner": payload[:8].hex()}
+        if len(payload) >= 8:
+            result["proto_version"] = f"{payload[5]}.{payload[6]}.{payload[7]}"
+        return result
+    if payload[0] == 0x01:
+        # AMQP method frame
+        return {"service": "amqp", "raw_banner": payload[:16].hex()}
+    return None
+
+
+def _match_docker_api(payload: bytes) -> dict | None:
+    text = payload.decode("ascii", errors="replace")
+    if not text.startswith("HTTP/"):
+        return None
+    if '"ApiVersion"' not in text:
+        return None
+    result: dict = {
+        "service": "docker_api",
+        "software": "Docker",
+        "raw_banner": text.strip(),
+    }
+    m = re.search(r'"ApiVersion"\s*:\s*"([^"]+)"', text)
+    if m:
+        result["version"] = m.group(1)
+    return result
+
+
+def _match_kubernetes_api(payload: bytes) -> dict | None:
+    text = payload.decode("ascii", errors="replace")
+    if not text.startswith("HTTP/"):
+        return None
+    has_version = '"major"' in text and '"minor"' in text
+    has_status = '"kind":"Status"' in text or '"kind": "Status"' in text
+    if not (has_version or has_status):
+        return None
+    result: dict = {
+        "service": "kubernetes_api",
+        "software": "Kubernetes",
+        "raw_banner": text.strip(),
+    }
+    m = re.search(r'"gitVersion"\s*:\s*"([^"]+)"', text)
+    if m:
+        result["version"] = m.group(1)
+    return result
+
+
+def _match_socks(payload: bytes) -> dict | None:
+    if len(payload) < 2:
+        return None
+    # SOCKS5: byte 0 = 0x05
+    if payload[0] == 0x05:
+        return {"service": "socks", "version": "5", "raw_banner": payload[:2].hex()}
+    # SOCKS4: byte 0 = 0x00, byte 1 = 0x5A (request granted)
+    if payload[0] == 0x00 and payload[1] == 0x5A:
+        return {"service": "socks", "version": "4", "raw_banner": payload[:8].hex()}
+    return None
+
+
+def _match_bgp(payload: bytes) -> dict | None:
+    if len(payload) < 21:
+        return None
+    # 16 bytes of 0xFF marker
+    if payload[:16] != b"\xff" * 16:
+        return None
+    # Type field at byte 18 must be 1 (OPEN)
+    msg_type = payload[18]
+    if msg_type != 1:
+        return None
+    result: dict = {"service": "bgp", "raw_banner": payload[:21].hex()}
+    # BGP version at byte 19
+    result["version"] = str(payload[19])
+    # AS number at bytes 20-21
+    if len(payload) >= 22:
+        result["as_number"] = struct.unpack("!H", payload[20:22])[0]
+    return result
+
+
+def _match_pptp(payload: bytes) -> dict | None:
+    if len(payload) < 12:
+        return None
+    # Bytes 8-9 = 0x0001 (control message)
+    # Bytes 10-11 = 0x0002 (Start-Control-Connection-Reply)
+    if payload[8:10] != b"\x00\x01":
+        return None
+    if payload[10:12] != b"\x00\x02":
+        return None
+    return {"service": "pptp", "raw_banner": payload[:32].hex()}
+
+
 # ---------------------------------------------------------------------------
 # Dispatch table
 # ---------------------------------------------------------------------------
@@ -297,6 +468,18 @@ _MATCHERS: dict[str, Callable[[bytes], dict | None]] = {
     "ipp": _match_ipp,
     "jetdirect": _match_jetdirect,
     "lpd": _match_lpd,
+    "mqtt": _match_mqtt,
+    "sip": _match_sip,
+    "rtsp": _match_rtsp,
+    "ldap": _match_ldap,
+    "cassandra": _match_cassandra,
+    "elasticsearch": _match_elasticsearch,
+    "amqp": _match_amqp,
+    "docker_api": _match_docker_api,
+    "kubernetes_api": _match_kubernetes_api,
+    "socks": _match_socks,
+    "bgp": _match_bgp,
+    "pptp": _match_pptp,
 }
 
 

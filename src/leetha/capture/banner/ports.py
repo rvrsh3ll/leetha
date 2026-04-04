@@ -30,6 +30,23 @@ _SERVICE_PORTS: dict[str, list[int]] = {
     "IPP": [631],
     "JetDirect": [9100],
     "LPD": [515],
+    # IoT / Messaging
+    "MQTT": [1883, 8883],
+    "AMQP": [5672],
+    # VoIP / Streaming
+    "SIP": [5060, 5061],
+    "RTSP": [554, 8554],
+    # Directory
+    "LDAP": [389, 636],
+    # Databases
+    "Cassandra": [9042],
+    "Elasticsearch": [9200],
+    # Security-relevant
+    "DockerAPI": [2375, 2376],
+    "KubernetesAPI": [6443],
+    "SOCKS": [1080, 1081],
+    "BGP": [179],
+    "PPTP": [1723],
 }
 
 # Inverted index: port → service name

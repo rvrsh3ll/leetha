@@ -13,6 +13,15 @@ _SERVICE_CATEGORIES: dict[str, str] = {
     "mysql": "server", "postgresql": "server", "mssql": "server",
     "mongodb": "server", "redis": "server", "irc": "server",
     "ipp": "printer", "jetdirect": "printer", "lpd": "printer",
+    "mqtt": "server", "amqp": "server",
+    "sip": "server",
+    "rtsp": "server",
+    "ldap": "server",
+    "cassandra": "server", "elasticsearch": "server",
+    "docker_api": "server", "kubernetes_api": "server",
+    "socks": "server",
+    "bgp": "router",
+    "pptp": "server",
 }
 
 _SERVICE_PLATFORMS: dict[str, str] = {
@@ -34,6 +43,10 @@ _SOFTWARE_VENDORS: dict[str, str] = {
     "microsoft sql server": "Microsoft",
     "mongodb": "MongoDB",
     "redis": "Redis",
+    "elasticsearch": "Elastic",
+    "docker": "Docker",
+    "kubernetes": "Kubernetes",
+    "rabbitmq": "RabbitMQ",
 }
 
 _SSH_OS_HINTS: dict[str, str] = {
