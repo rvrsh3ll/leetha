@@ -12,7 +12,7 @@ import hashlib
 import re
 from typing import Dict, Optional
 
-from leetha.patterns.loader import load
+from leetha.patterns.loader import load, load_compiled
 
 # =====================================================================
 # Banner matching
@@ -79,13 +79,23 @@ _EXTENDED_PRIORITY = [
 ]
 
 
-def _match_extended(banner: str, patterns: list[dict]) -> Optional[Dict]:
-    """Match banner against extended pattern dicts (with device_type)."""
-    for entry in patterns:
-        regex = entry.get("match", "")
-        if not regex:
-            continue
-        m = re.search(regex, banner, re.IGNORECASE)
+def _match_extended(banner: str, patterns: list) -> Optional[Dict]:
+    """Match banner against extended pattern dicts (with device_type).
+
+    Accepts both compiled tuples ``(re.Pattern, dict)`` from
+    ``load_compiled()`` and raw dicts from ``load()``.
+    """
+    for item in patterns:
+        if isinstance(item, tuple):
+            regex_obj, entry = item
+            m = regex_obj.search(banner)
+            regex_str = regex_obj.pattern
+        else:
+            entry = item
+            regex_str = entry.get("match", "")
+            if not regex_str:
+                continue
+            m = re.search(regex_str, banner, re.IGNORECASE)
         if m:
             version = None
             version_re = entry.get("version_match")
@@ -100,7 +110,7 @@ def _match_extended(banner: str, patterns: list[dict]) -> Optional[Dict]:
                 "version": version,
                 "confidence": entry.get("certainty", 50),
                 "device_type": entry.get("device_type"),
-                "matched_pattern": regex,
+                "matched_pattern": regex_str,
             }
     return None
 
@@ -120,7 +130,13 @@ def match_banner(protocol: str, banner: str) -> Optional[Dict]:
         return None
 
     banners = load("banners")  # dict of category -> list[dict]
+    compiled = load_compiled("banners")  # list[(re.Pattern, dict)]
     protocol_lower = protocol.lower()
+
+    # Build a lookup from compiled patterns keyed by category.
+    # load_compiled flattens all entries; we use the raw banners dict
+    # to get per-category compiled lists via _match_extended which now
+    # accepts both compiled tuples and raw dicts.
 
     # 1. Try extended patterns first (they carry device_type)
     for cat in _EXTENDED_PRIORITY:
@@ -140,11 +156,17 @@ def match_banner(protocol: str, banner: str) -> Optional[Dict]:
         for c in _ALL_BASIC_CATEGORIES:
             patterns.extend(banners.get(c, []))
 
-    for entry in patterns:
-        regex = entry.get("match", "")
-        if not regex:
-            continue
-        m = re.search(regex, banner, re.IGNORECASE)
+    for item in patterns:
+        if isinstance(item, tuple):
+            regex_obj, entry = item
+            m = regex_obj.search(banner)
+            regex_str = regex_obj.pattern
+        else:
+            entry = item
+            regex_str = entry.get("match", "")
+            if not regex_str:
+                continue
+            m = re.search(regex_str, banner, re.IGNORECASE)
         if m:
             version = None
             version_re = entry.get("version_match")
@@ -158,7 +180,7 @@ def match_banner(protocol: str, banner: str) -> Optional[Dict]:
                 "os_family": entry.get("platform"),
                 "version": version,
                 "confidence": entry.get("certainty", 50),
-                "matched_pattern": regex,
+                "matched_pattern": regex_str,
             }
 
     return None
