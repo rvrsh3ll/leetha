@@ -379,10 +379,10 @@
       "certainty": 95
     },
     "_amzn-wplay._tcp": {
-      "category": "smart_speaker",
+      "category": "smart_home",
       "vendor": "Amazon",
       "platform": "Fire OS",
-      "certainty": 90
+      "certainty": 70
     },
     "_octoprint._tcp": {
       "category": "3d_printer",

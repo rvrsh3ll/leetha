@@ -5,6 +5,7 @@ from leetha.processors.registry import register_processor
 from leetha.processors.base import Processor
 from leetha.capture.packets import CapturedPacket
 from leetha.evidence.models import Evidence
+from leetha.patterns.tls import lookup_ja3
 
 
 @register_processor("tcp_syn", "tls", "http_useragent")
@@ -60,6 +61,10 @@ class ServiceFingerprintProcessor(Processor):
                 source="tls_ja3", method="pattern", certainty=0.75,
                 raw={"ja3_hash": ja3},
             ))
+            match = lookup_ja3(ja3)
+            if match:
+                evidence[-1].vendor = match.get("app")
+                evidence[-1].platform = match.get("os_family")
 
         if ja4:
             evidence.append(Evidence(
