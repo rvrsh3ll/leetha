@@ -28,9 +28,14 @@ class Pipeline:
           Store (batch) -> FindingRules -> Findings
     """
 
-    def __init__(self, store, verdict_engine: VerdictEngine | None = None):
+    def __init__(self, store, verdict_engine: VerdictEngine | None = None,
+                 on_verdict=None, on_arp=None, on_dhcp=None, on_gateway_hint=None):
         self.store = store
         self.verdict_engine = verdict_engine or VerdictEngine()
+        self._on_verdict = on_verdict          # async(hw_addr, verdict, packet)
+        self._on_arp = on_arp                  # async(packet)
+        self._on_dhcp = on_dhcp                # callable(packet) -- sync fire-and-forget
+        self._on_gateway_hint = on_gateway_hint  # async(mac, ip, source, interface)
         self._evidence_buffer: dict[str, list[Evidence]] = defaultdict(list)
         self._batch_queue: list = []
         self._processor_instances: dict[str, object] = {}
@@ -56,6 +61,40 @@ class Pipeline:
     async def process(self, packet: CapturedPacket) -> None:
         """Process a single captured packet through the full pipeline."""
         protocol = packet.protocol
+
+        # Side effects: fire before main processing
+        if packet.protocol == "arp" and self._on_arp:
+            try:
+                await self._on_arp(packet)
+            except Exception:
+                logger.debug("ARP side effect failed", exc_info=True)
+
+        if packet.protocol == "dhcpv4" and self._on_dhcp:
+            try:
+                self._on_dhcp(packet)
+            except Exception:
+                logger.debug("DHCP side effect failed", exc_info=True)
+
+        # Gateway learning from DHCP OFFER/ACK or ICMPv6 RA
+        if self._on_gateway_hint:
+            if packet.protocol == "dhcpv4":
+                raw_opts = packet.fields.get("raw_options", {})
+                msg_type = raw_opts.get("message-type")
+                if msg_type in (2, 5) and packet.ip_addr:
+                    try:
+                        await self._on_gateway_hint(
+                            packet.hw_addr, packet.ip_addr, "dhcp_server",
+                            packet.interface or "")
+                    except Exception:
+                        pass
+            elif packet.protocol == "icmpv6":
+                if packet.fields.get("icmpv6_type") == "router_advertisement" and packet.ip_addr:
+                    try:
+                        await self._on_gateway_hint(
+                            packet.hw_addr, packet.ip_addr, "auto_gateway",
+                            packet.interface or "")
+                    except Exception:
+                        pass
 
         # 1. Find and run the registered processor
         processor = self._processor_instances.get(protocol)
@@ -100,6 +139,12 @@ class Pipeline:
 
         # 5. Store verdict
         await self.store.verdicts.upsert(verdict)
+
+        if self._on_verdict:
+            try:
+                await self._on_verdict(hw_addr, verdict, packet)
+            except Exception:
+                logger.debug("Verdict callback failed", exc_info=True)
 
         # 6. Evaluate finding rules
         for rule in self._rule_instances:

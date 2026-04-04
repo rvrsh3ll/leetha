@@ -1,0 +1,60 @@
+"""Tests for enhanced Pipeline with side effect hooks."""
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
+from leetha.core.pipeline import Pipeline
+from leetha.capture.packets import CapturedPacket
+
+
+class TestPipelineHooks:
+    def setup_method(self):
+        self.loop = asyncio.new_event_loop()
+
+    def teardown_method(self):
+        self.loop.close()
+
+    def _make_mock_store(self):
+        store = MagicMock()
+        store.sightings = AsyncMock()
+        store.hosts = AsyncMock()
+        store.verdicts = AsyncMock()
+        store.findings = AsyncMock()
+        return store
+
+    def test_on_arp_callback_fires(self):
+        async def _test():
+            import leetha.processors
+            store = self._make_mock_store()
+            arp_cb = AsyncMock()
+            pipeline = Pipeline(store, on_arp=arp_cb)
+            pkt = CapturedPacket(
+                protocol="arp", hw_addr="aa:bb:cc:dd:ee:ff",
+                ip_addr="192.168.1.1", fields={"op": 1})
+            await pipeline.process(pkt)
+            arp_cb.assert_called_once()
+        self.loop.run_until_complete(_test())
+
+    def test_on_dhcp_callback_fires(self):
+        async def _test():
+            import leetha.processors
+            store = self._make_mock_store()
+            dhcp_cb = MagicMock()
+            pipeline = Pipeline(store, on_dhcp=dhcp_cb)
+            pkt = CapturedPacket(
+                protocol="dhcpv4", hw_addr="aa:bb:cc:dd:ee:ff",
+                ip_addr="192.168.1.100",
+                fields={"hostname": "test", "opt55": "1,3,6"})
+            await pipeline.process(pkt)
+            dhcp_cb.assert_called_once()
+        self.loop.run_until_complete(_test())
+
+    def test_no_callbacks_still_works(self):
+        async def _test():
+            import leetha.processors
+            store = self._make_mock_store()
+            pipeline = Pipeline(store)
+            pkt = CapturedPacket(
+                protocol="arp", hw_addr="aa:bb:cc:dd:ee:ff",
+                ip_addr="192.168.1.1", fields={"op": 1})
+            await pipeline.process(pkt)
+            # Should not crash
+        self.loop.run_until_complete(_test())
