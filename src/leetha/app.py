@@ -6,7 +6,7 @@ device store, and alert engine into a single processing pipeline.
 UI frontends (web, live CLI) subscribe to real-time events.
 
 When ``config.worker_count > 1`` the pipeline is sharded:
-  CaptureEngine → PacketRouter (MAC hash) → N worker tasks → BatchWriter → DB
+  CaptureEngine → PacketRouter (MAC hash) → N worker tasks → Pipeline → Store
 When ``config.worker_count == 1`` (default) the original single-loop path
 is used for backward compatibility.
 """
@@ -21,10 +21,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 from leetha.capture.engine import CaptureEngine
 from leetha.capture.protocols import ParsedPacket
+from leetha.capture.packets import CapturedPacket
+from leetha.core.pipeline import Pipeline
 from leetha.fingerprint.engine import FingerprintEngine
 from leetha.fingerprint.evidence import FingerprintMatch, aggregate_evidence
-from leetha.pipeline import PacketRouter, BatchWriter, AddObservation, UpsertDevice
+from leetha.pipeline import PacketRouter
 from leetha.store.database import Database
+from leetha.store.store import Store
 from leetha.store.models import Device, DeviceIdentity, Observation
 from leetha.alerts.engine import AlertEngine
 from leetha.config import get_config
@@ -128,6 +131,8 @@ class LeethaApp:
 
         self.config = get_config()
         self.db = Database(self.config.db_path)
+        self.store = Store(self.config.db_path)
+        self.pipeline: Pipeline | None = None  # initialized in start()
         self.fingerprint_engine = FingerprintEngine()
         self.alert_engine = AlertEngine(self.db)
         self.spoofing_detector = SpoofingDetector(self.db)
@@ -165,7 +170,6 @@ class LeethaApp:
 
         # Sharded pipeline (only when worker_count > 1)
         self._router: PacketRouter | None = None
-        self._writer: BatchWriter | None = None
         self._tasks: list[asyncio.Task] = []
 
     async def start(self):
@@ -173,10 +177,21 @@ class LeethaApp:
         self.config.cache_dir.mkdir(parents=True, exist_ok=True)
         self.config.data_dir.mkdir(parents=True, exist_ok=True)
         await self.db.initialize()
+        await self.store.initialize()
         await self.spoofing_detector.initialize()
         loop = asyncio.get_running_loop()
-        # Load custom patterns from user data directory
-        self.fingerprint_engine.lookup.load_custom_patterns(self.config.data_dir)
+
+        # Trigger processor auto-discovery so Pipeline sees all protocols
+        import leetha.processors  # noqa: F401
+
+        self.pipeline = Pipeline(
+            store=self.store,
+            on_verdict=self._on_verdict_event,
+            on_arp=self._on_arp_packet,
+            on_dhcp=self._on_dhcp_packet,
+            on_gateway_hint=self._on_gateway_hint,
+        )
+
         self.capture_engine.start(self.packet_queue, loop)
         self._running = True
 
@@ -203,21 +218,15 @@ class LeethaApp:
         self._tasks.append(asyncio.create_task(self._reevaluate_unknown_devices()))
 
         if self.config.worker_count > 1:
-            # Sharded pipeline: dispatch → router → N workers → batch writer
+            # Sharded pipeline: dispatch → router → N workers → Pipeline
             self._router = PacketRouter(num_workers=self.config.worker_count)
-            self._writer = BatchWriter(
-                db=self.db,
-                flush_interval=self.config.db_flush_interval,
-                max_batch=self.config.db_batch_size,
-            )
             self._tasks.append(asyncio.create_task(self._dispatch_loop()))
-            self._tasks.append(asyncio.create_task(self._writer.run()))
             for shard_id in range(self.config.worker_count):
                 self._tasks.append(asyncio.create_task(
                     self._worker_loop(shard_id, self._router.workers[shard_id])
                 ))
         else:
-            # Single-worker fallback (backward compat)
+            # Single-worker mode
             self._tasks.append(asyncio.create_task(self._process_loop()))
 
     def _preload_caches(self):
@@ -303,12 +312,10 @@ class LeethaApp:
             except asyncio.TimeoutError:
                 pass
         self._tasks.clear()
-        # Best-effort flush
-        if self._writer:
-            try:
-                await asyncio.wait_for(self._writer.flush(), timeout=1.0)
-            except Exception:
-                pass
+        try:
+            await self.store.close()
+        except Exception:
+            pass
         try:
             await self.db.close()
         except Exception:
@@ -326,276 +333,17 @@ class LeethaApp:
             self.event_subscribers.remove(q)
 
     async def _process_loop(self):
-        """Main loop: dequeue packets, fingerprint, store, alert, notify."""
+        """Single-worker packet processing loop using new Pipeline."""
         try:
             while self._running:
                 try:
                     packet = await asyncio.wait_for(self.packet_queue.get(), timeout=1.0)
                 except asyncio.TimeoutError:
                     continue
-
                 try:
-                    # Step 0: Submit DHCP anomaly analysis to background thread
-                    if packet.protocol == "dhcpv4" and packet.data.get("raw_options"):
-                        future = self._analysis_executor.submit(
-                            analyze_dhcp_options,
-                            packet.data["raw_options"],
-                            packet.src_mac,
-                            packet.src_ip or "",
-                            self.config.data_dir,
-                        )
-                        future.add_done_callback(
-                            lambda f: self._handle_dhcp_anomalies(f)
-                        )
-
-                    # Step 0a: ARP spoofing detection (runs on ALL ARP
-                    # packets, even those with no OUI/fingerprint match)
-                    spoofing_alerts: list = []
-                    if packet.protocol == "arp":
-                        spoofing_alerts = await self.spoofing_detector.process_arp(
-                            src_mac=packet.src_mac,
-                            src_ip=packet.src_ip or "",
-                            dst_mac=packet.dst_mac or "ff:ff:ff:ff:ff:ff",
-                            dst_ip=packet.dst_ip or "",
-                            op=packet.data.get("op", 0),
-                            interface=packet.interface or "unknown",
-                        )
-                        for alert in spoofing_alerts:
-                            await self.db.add_alert(alert)
-
-                        # Learn hosts from ARP replies — when we see an ARP
-                        # reply, the sender reveals its MAC+IP binding.
-                        # This helps discover cross-VLAN devices whose
-                        # replies we can observe.
-                        arp_op = packet.data.get("op", 0)
-                        if arp_op == 2:
-                            # ARP reply source = the device that answered
-                            arp_src_mac = packet.data.get("src_mac", packet.src_mac)
-                            arp_src_ip = packet.data.get("src_ip", packet.src_ip)
-                            if arp_src_mac and arp_src_ip:
-                                from leetha.store.models import Device
-                                arp_device = Device(
-                                    mac=arp_src_mac,
-                                    ip_v4=arp_src_ip,
-                                )
-                                await self.db.upsert_device(arp_device)
-
-                    # Step 0b: Auto-learn DHCP server as gateway
-                    if packet.protocol == "dhcpv4":
-                        raw_opts = packet.data.get("raw_options", {})
-                        msg_type = raw_opts.get("message-type")
-                        if msg_type in (2, 5) and packet.src_ip:
-                            await self.spoofing_detector.learn_gateway(
-                                mac=packet.src_mac,
-                                ip=packet.src_ip,
-                                source="dhcp_server",
-                                interface=packet.interface or "unknown",
-                            )
-
-                    # Step 0c: Auto-learn router from ICMPv6 RA
-                    if packet.protocol == "icmpv6":
-                        if packet.data.get("type") == 134 and packet.src_ip:
-                            await self.spoofing_detector.learn_gateway(
-                                mac=packet.src_mac,
-                                ip=packet.src_ip,
-                                source="auto_gateway",
-                                interface=packet.interface or "unknown",
-                            )
-
-                    # Step 0d: DNS behavioral tracking + vendor evidence
-                    if packet.protocol == "dns":
-                        query_name = packet.data.get("query_name", "")
-                        query_type = packet.data.get("query_type", 1)
-                        if query_name:
-                            # Feed behavioral profiler
-                            try:
-                                from leetha.rules.behavioral import _shared_tracker
-                                _shared_tracker.record(packet.src_mac, query_name, query_type)
-                            except Exception:
-                                logger.debug("Behavioral tracker record failed", exc_info=True)
-
-                    # Step 0e: DHCP client-ID correlation for randomized MACs
-                    if packet.protocol == "dhcpv4":
-                        client_id = packet.data.get("client_id")
-                        if client_id and client_id != packet.src_mac:
-                            # Option 61 contains the REAL hardware MAC
-                            from leetha.fingerprint.mac_intel import detect_randomised_mac
-                            if detect_randomised_mac(packet.src_mac):
-                                # Update device with real MAC correlation
-                                existing_dev = await self.db.get_device(packet.src_mac)
-                                if existing_dev and not existing_dev.correlated_mac:
-                                    existing_dev.correlated_mac = client_id
-                                    existing_dev.is_randomized_mac = True
-                                    await self.db.upsert_device(existing_dev)
-
-                    # Step 1: Fingerprint the packet
-                    matches = self._fingerprint_packet(packet)
-
-                    # Step 1a: Enrich with DNS vendor evidence
-                    if packet.protocol == "dns" and packet.data.get("query_name"):
-                        try:
-                            from leetha.patterns.matching import match_dns_query
-                            dns_hit = match_dns_query(
-                                packet.data["query_name"],
-                                packet.data.get("query_type", 1),
-                            )
-                            if dns_hit and dns_hit.get("confidence", 0) >= 0.5:
-                                matches.append(FingerprintMatch(
-                                    source="dns_vendor",
-                                    match_type="pattern",
-                                    confidence=min(dns_hit["confidence"], 0.60),
-                                    manufacturer=dns_hit.get("manufacturer"),
-                                    os_family=dns_hit.get("os_family"),
-                                    raw_data={"query": packet.data["query_name"],
-                                              "service_type": dns_hit.get("note", "")},
-                                ))
-                        except Exception:
-                            logger.debug("DNS vendor enrichment failed", exc_info=True)
-
-                    # Step 1b: Hostname-based vendor inference for randomized MACs
-                    hostname = (packet.data.get("hostname")
-                                or packet.data.get("fqdn")
-                                or packet.data.get("name"))
-                    if hostname and not any(m.source == "hostname" for m in matches):
-                        hn_match = self.fingerprint_engine.lookup.lookup_hostname(hostname)
-                        if hn_match:
-                            matches.append(hn_match)
-
-                    if not matches:
-                        await self._persist_packet_metadata(packet)
-                        if spoofing_alerts:
-                            event = {
-                                "type": "device_update",
-                                "device": None,
-                                "alerts": spoofing_alerts,
-                                "packet": packet,
-                                "matches": [],
-                                "evidence": {},
-                            }
-                            for sub in self.event_subscribers:
-                                try:
-                                    sub.put_nowait(event)
-                                except asyncio.QueueFull:
-                                    pass
-                        continue
-
-                    # Step 2: Aggregate evidence into a device profile
-                    evidence = aggregate_evidence(matches)
-
-                    # Step 3: Build the device model
-                    device = self._evidence_to_device(packet, evidence)
-
-                    # Step 3a: Merge with existing device data so we don't
-                    # clobber IPs, hostnames, etc. that came from earlier packets.
-                    existing = await self.db.get_device(device.mac)
-                    if existing is not None:
-                        device = self._merge_device(existing, device)
-
-                    # Auto-tag local device MACs as "self"
-                    if self.is_local_device(device.mac):
-                        device.alert_status = "self"
-
-                    # Step 3b: Identity assignment
-                    fingerprint = build_correlation_fingerprint(packet.data, packet.protocol)
-                    await self._assign_identity(device, fingerprint)
-
-                    # Step 4: Evaluate alert rules (this also upserts the device)
-                    alerts = await self.alert_engine.evaluate(device)
-                    alerts.extend(spoofing_alerts)
-
-                    # Step 4a: Identity shift detection (new rules engine)
-                    try:
-                        from leetha.rules.registry import get_all_rules
-                        from leetha.store.models import Host
-                        from leetha.evidence.models import Verdict
-                        host = Host(
-                            hw_addr=device.mac,
-                            ip_addr=device.ip_v4,
-                            discovered_at=device.first_seen,
-                            last_active=device.last_seen,
-                            mac_randomized=device.is_randomized_mac,
-                            real_hw_addr=device.correlated_mac,
-                            disposition=device.alert_status or "new",
-                        )
-                        verdict = Verdict(
-                            hw_addr=device.mac,
-                            category=device.device_type,
-                            vendor=device.manufacturer,
-                            platform=device.os_family,
-                            platform_version=device.os_version,
-                            hostname=device.hostname,
-                            certainty=device.confidence,
-                        )
-                        for rule_name, rule_cls in get_all_rules().items():
-                            try:
-                                rule = rule_cls()
-                                finding = await rule.evaluate(host, verdict, self.db)
-                                if finding:
-                                    from leetha.store.models import Alert, AlertType, AlertSeverity
-                                    alert = Alert(
-                                        device_mac=device.mac,
-                                        alert_type=AlertType(finding.rule.value) if finding.rule.value in [e.value for e in AlertType] else AlertType.UNCLASSIFIED,
-                                        severity=finding.severity,
-                                        message=finding.message,
-                                    )
-                                    await self.db.add_alert(alert)
-                                    alerts.append(alert)
-                            except Exception:
-                                logger.warning(
-                                    "Rule %s evaluation failed for %s",
-                                    rule_name, device.mac, exc_info=True,
-                                )
-                    except Exception:
-                        logger.debug("Identity shift / rule evaluation setup failed", exc_info=True)
-
-                    # Step 4b: Fingerprint drift / clone detection
-                    oui_vendor = None
-                    for m in matches:
-                        if getattr(m, "source", None) == "oui":
-                            oui_vendor = m.manufacturer
-                            break
-                    clone_alerts = await self.spoofing_detector.process_device_update(
-                        device, oui_vendor=oui_vendor,
-                    )
-                    for alert in clone_alerts:
-                        await self.db.add_alert(alert)
-                    alerts.extend(clone_alerts)
-
-                    # Step 5: Record the observation
-                    observation = self._packet_to_observation(packet, matches)
-                    await self.db.add_observation(observation)
-
-                    # Step 5a: Schedule probe if enabled and packet has port info
-                    if self.probe_scheduler and packet.data.get("dst_port"):
-                        try:
-                            await self.probe_scheduler.schedule(
-                                mac=packet.src_mac,
-                                ip=packet.src_ip or "",
-                                port=packet.data["dst_port"],
-                                on_result=self._probe_result_callback,
-                            )
-                        except Exception as exc:
-                            logger.debug("Probe scheduling failed: %s", exc)
-
-                    # Step 6: Notify subscribers
-                    event = {
-                        "type": "device_update",
-                        "device": device,
-                        "alerts": alerts,
-                        "packet": packet,
-                        "matches": matches,
-                        "evidence": evidence,
-                    }
-                    for sub in self.event_subscribers:
-                        try:
-                            sub.put_nowait(event)
-                        except asyncio.QueueFull:
-                            pass  # drop event if subscriber is too slow
-
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.error(f"Error processing packet: {e}", exc_info=True)
+                    await self.pipeline.process(packet)
+                except Exception:
+                    logger.debug("Pipeline processing failed", exc_info=True)
         except asyncio.CancelledError:
             return
 
@@ -705,154 +453,69 @@ class LeethaApp:
         except asyncio.CancelledError:
             return
 
-    async def _worker_loop(self, shard_id: int, queue: asyncio.Queue[ParsedPacket]):
-        """Process packets from a shard queue, sending writes via BatchWriter."""
-        assert self._writer is not None
+    async def _worker_loop(self, shard_id: int, queue):
+        """Process packets from a shard queue using new Pipeline."""
         try:
             while self._running:
                 try:
                     packet = await asyncio.wait_for(queue.get(), timeout=1.0)
                 except asyncio.TimeoutError:
                     continue
-
                 try:
-                    # DHCP anomaly analysis (fire-and-forget)
-                    if packet.protocol == "dhcpv4" and packet.data.get("raw_options"):
-                        future = self._analysis_executor.submit(
-                            analyze_dhcp_options,
-                            packet.data["raw_options"],
-                            packet.src_mac,
-                            packet.src_ip or "",
-                            self.config.data_dir,
-                        )
-                        future.add_done_callback(
-                            lambda f: self._handle_dhcp_anomalies(f)
-                        )
-
-                    # ARP spoofing detection (before fingerprint gate)
-                    spoofing_alerts: list = []
-                    if packet.protocol == "arp":
-                        spoofing_alerts = await self.spoofing_detector.process_arp(
-                            src_mac=packet.src_mac,
-                            src_ip=packet.src_ip or "",
-                            dst_mac=packet.dst_mac or "ff:ff:ff:ff:ff:ff",
-                            dst_ip=packet.dst_ip or "",
-                            op=packet.data.get("op", 0),
-                            interface=packet.interface or "unknown",
-                        )
-                        for alert in spoofing_alerts:
-                            await self.db.add_alert(alert)
-
-                    # Auto-learn DHCP server as gateway
-                    if packet.protocol == "dhcpv4":
-                        raw_opts = packet.data.get("raw_options", {})
-                        msg_type = raw_opts.get("message-type")
-                        if msg_type in (2, 5) and packet.src_ip:
-                            await self.spoofing_detector.learn_gateway(
-                                mac=packet.src_mac,
-                                ip=packet.src_ip,
-                                source="dhcp_server",
-                                interface=packet.interface or "unknown",
-                            )
-
-                    # Auto-learn router from ICMPv6 RA
-                    if packet.protocol == "icmpv6":
-                        if packet.data.get("type") == 134 and packet.src_ip:
-                            await self.spoofing_detector.learn_gateway(
-                                mac=packet.src_mac,
-                                ip=packet.src_ip,
-                                source="auto_gateway",
-                                interface=packet.interface or "unknown",
-                            )
-
-                    matches = self._fingerprint_packet(packet)
-                    if not matches:
-                        await self._persist_packet_metadata(packet)
-                        if spoofing_alerts:
-                            event = {
-                                "type": "device_update",
-                                "device": None,
-                                "alerts": spoofing_alerts,
-                                "packet": packet,
-                                "matches": [],
-                                "evidence": {},
-                            }
-                            for sub in self.event_subscribers:
-                                try:
-                                    sub.put_nowait(event)
-                                except asyncio.QueueFull:
-                                    pass
-                        continue
-
-                    evidence = aggregate_evidence(matches)
-                    device = self._evidence_to_device(packet, evidence)
-
-                    existing = await self.db.get_device(device.mac)
-                    if existing is not None:
-                        device = self._merge_device(existing, device)
-
-                    # Auto-tag local device MACs as "self"
-                    if self.is_local_device(device.mac):
-                        device.alert_status = "self"
-
-                    fingerprint = build_correlation_fingerprint(packet.data, packet.protocol)
-                    await self._assign_identity(device, fingerprint)
-
-                    # evaluate() upserts the device and persists alerts directly
-                    alerts = await self.alert_engine.evaluate(device)
-                    alerts.extend(spoofing_alerts)
-
-                    # Fingerprint drift / clone detection
-                    oui_vendor = None
-                    for m in matches:
-                        if getattr(m, "source", None) == "oui":
-                            oui_vendor = m.manufacturer
-                            break
-                    clone_alerts = await self.spoofing_detector.process_device_update(
-                        device, oui_vendor=oui_vendor,
-                    )
-                    for alert in clone_alerts:
-                        await self.db.add_alert(alert)
-                    alerts.extend(clone_alerts)
-
-                    observation = self._packet_to_observation(packet, matches)
-
-                    # Batch observation writes through BatchWriter
-                    self._writer.enqueue(AddObservation(observation))
-
-                    # Probe scheduling
-                    if self.probe_scheduler and packet.data.get("dst_port"):
-                        try:
-                            await self.probe_scheduler.schedule(
-                                mac=packet.src_mac,
-                                ip=packet.src_ip or "",
-                                port=packet.data["dst_port"],
-                                on_result=self._probe_result_callback,
-                            )
-                        except Exception as exc:
-                            logger.debug("Probe scheduling failed: %s", exc)
-
-                    # Notify subscribers
-                    event = {
-                        "type": "device_update",
-                        "device": device,
-                        "alerts": alerts,
-                        "packet": packet,
-                        "matches": matches,
-                        "evidence": evidence,
-                    }
-                    for sub in self.event_subscribers:
-                        try:
-                            sub.put_nowait(event)
-                        except asyncio.QueueFull:
-                            pass
-
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.error(f"Worker {shard_id} error: {e}", exc_info=True)
+                    await self.pipeline.process(packet)
+                except Exception:
+                    logger.debug("Worker %d pipeline failed", shard_id, exc_info=True)
         except asyncio.CancelledError:
             return
+
+    # -- Pipeline side-effect callbacks ----------------------------------
+
+    async def _on_verdict_event(self, hw_addr, verdict, packet):
+        """Emit WebSocket event after verdict computed."""
+        event = {
+            "type": "device_update",
+            "mac": hw_addr,
+            "verdict": verdict.to_dict() if hasattr(verdict, "to_dict") else {},
+        }
+        for sub in self.event_subscribers:
+            try:
+                sub.put_nowait(event)
+            except asyncio.QueueFull:
+                pass
+
+    async def _on_arp_packet(self, packet):
+        """Run spoofing detection on ARP packets."""
+        try:
+            alerts = await self.spoofing_detector.process_arp(
+                src_mac=packet.hw_addr,
+                src_ip=packet.ip_addr or "",
+                dst_mac=packet.target_hw or "ff:ff:ff:ff:ff:ff",
+                dst_ip=packet.target_ip or "",
+                op=packet.fields.get("op", 0),
+                interface=packet.interface or "unknown",
+            )
+            for alert in alerts:
+                await self.db.add_alert(alert)
+        except Exception:
+            logger.debug("ARP spoofing check failed", exc_info=True)
+
+    def _on_dhcp_packet(self, packet):
+        """Submit DHCP options for anomaly analysis."""
+        raw_opts = packet.fields.get("raw_options")
+        if raw_opts:
+            future = self._analysis_executor.submit(
+                analyze_dhcp_options,
+                raw_opts,
+                packet.hw_addr,
+                packet.ip_addr or "",
+                self.config.data_dir,
+            )
+            future.add_done_callback(lambda f: self._handle_dhcp_anomalies(f))
+
+    async def _on_gateway_hint(self, mac, ip, source, interface):
+        """Auto-learn gateway from DHCP/RA."""
+        await self.spoofing_detector.learn_gateway(
+            mac=mac, ip=ip, source=source, interface=interface)
 
     async def _probe_result_callback(self, mac: str, match):
         """Feed probe results back into device fingerprinting."""
@@ -1042,10 +705,9 @@ class LeethaApp:
         For dns_answer PTR records the hostname belongs to the *queried* device
         (identified by answer_ip), not the DNS server that sent the response.
 
-        Reads are direct (safe under WAL); writes go through the BatchWriter
-        to avoid contention with other workers.
+        Reads are direct (safe under WAL); writes go through the database
+        directly (Pipeline handles its own persistence).
         """
-        assert self._writer is not None
         data = packet.data
 
         if packet.protocol == "dns_answer":
@@ -1057,7 +719,7 @@ class LeethaApp:
                 ptr_clean = _clean_hostname(ptr_hostname)
                 if existing and ptr_clean and (not existing.hostname or len(ptr_clean) < len(existing.hostname)):
                     existing.hostname = ptr_clean
-                    self._writer.enqueue(UpsertDevice(existing))
+                    await self.db.upsert_device(existing)
             return
 
         hostname = (
@@ -1096,7 +758,7 @@ class LeethaApp:
                 existing.ip_v6 = ip_v6
                 changed = True
             if changed:
-                self._writer.enqueue(UpsertDevice(existing))
+                await self.db.upsert_device(existing)
         else:
             # Device not yet in DB — create a minimal record so the IP
             # is captured even without a fingerprint match
@@ -1110,7 +772,7 @@ class LeethaApp:
             )
             if self.is_local_device(device.mac):
                 device.alert_status = "self"
-            self._writer.enqueue(UpsertDevice(device))
+            await self.db.upsert_device(device)
 
     def _evidence_to_device(self, packet: ParsedPacket, evidence: dict) -> Device:
         """Convert aggregated evidence to a Device model."""
