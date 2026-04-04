@@ -1,10 +1,14 @@
 """Network discovery processor -- ARP, DHCPv4, DHCPv6, ICMPv6."""
 from __future__ import annotations
 
+import re
+
 from leetha.processors.registry import register_processor
 from leetha.processors.base import Processor
 from leetha.capture.packets import CapturedPacket
 from leetha.evidence.models import Evidence
+
+_MAC_RE = re.compile(r"^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$")
 
 
 @register_processor("arp", "dhcpv4", "dhcpv6", "icmpv6")
@@ -56,6 +60,26 @@ class NetworkDiscoveryProcessor(Processor):
                 raw={"opt55": opt55},
             ))
 
+        client_id = packet.get("client_id")
+        if client_id:
+            ev = Evidence(
+                source="dhcpv4",
+                method="exact",
+                certainty=0.70,
+                raw={"client_id": client_id},
+            )
+            if _MAC_RE.match(client_id):
+                ev.raw["possible_real_mac"] = True
+            else:
+                # Check for vendor-like substring in non-MAC client IDs
+                cid_lower = client_id.lower()
+                for keyword in ("dell", "hp", "lenovo", "apple", "cisco",
+                                "huawei", "samsung", "intel", "broadcom"):
+                    if keyword in cid_lower:
+                        ev.vendor = client_id
+                        break
+            evidence.append(ev)
+
         return evidence
 
     def _analyze_dhcpv6(self, packet: CapturedPacket) -> list[Evidence]:
@@ -80,6 +104,25 @@ class NetworkDiscoveryProcessor(Processor):
                 hostname=fqdn,
                 raw={"fqdn": fqdn},
             ))
+
+        enterprise_id = packet.get("enterprise_id")
+        if enterprise_id:
+            evidence.append(Evidence(
+                source="dhcpv6",
+                method="exact",
+                certainty=0.70,
+                raw={"enterprise_id": enterprise_id},
+            ))
+
+        duid = packet.get("duid")
+        if duid:
+            evidence.append(Evidence(
+                source="dhcpv6",
+                method="exact",
+                certainty=0.65,
+                raw={"duid": duid},
+            ))
+
         return evidence
 
     def _analyze_icmpv6(self, packet: CapturedPacket) -> list[Evidence]:

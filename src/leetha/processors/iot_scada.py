@@ -7,6 +7,19 @@ from leetha.capture.packets import CapturedPacket
 from leetha.evidence.models import Evidence
 
 
+_MQTT_CLIENT_PATTERNS: list[tuple[str, str | None, str]] = [
+    ("tasmota", "Tasmota", "iot_device"),
+    ("shelly", "Shelly", "iot_device"),
+    ("sonoff", "Sonoff", "iot_device"),
+    ("homebridge", "Homebridge", "smart_home"),
+    ("zigbee2mqtt", None, "smart_home"),
+    ("node-red", "Node-RED", "smart_home"),
+    ("homeassistant", "Home Assistant", "smart_home"),
+    ("hass", "Home Assistant", "smart_home"),
+    ("esphome", "ESPHome", "iot_device"),
+]
+
+
 @register_processor("modbus", "bacnet", "coap", "mqtt", "enip")
 class IotScadaProcessor(Processor):
     """Handles ICS/SCADA and IoT protocols.
@@ -60,13 +73,33 @@ class IotScadaProcessor(Processor):
         )]
 
     def _analyze_mqtt(self, packet: CapturedPacket) -> list[Evidence]:
-        client_id = packet.get("client_id")
+        evidence: list[Evidence] = []
+        client_id = packet.get("client_id", "")
         topic = packet.get("topic")
-        return [Evidence(
+
+        # Baseline evidence for any MQTT traffic
+        evidence.append(Evidence(
             source="mqtt", method="heuristic", certainty=0.55,
             category="iot_device",
             raw={"client_id": client_id, "topic": topic},
-        )]
+        ))
+
+        # Pattern-match client_id to known IoT/smart-home prefixes
+        if client_id:
+            cid_lower = client_id.lower()
+            for prefix, vendor, category in _MQTT_CLIENT_PATTERNS:
+                if cid_lower.startswith(prefix):
+                    evidence.append(Evidence(
+                        source="mqtt",
+                        method="pattern",
+                        certainty=0.75,
+                        vendor=vendor,
+                        category=category,
+                        raw={"client_id": client_id},
+                    ))
+                    break
+
+        return evidence
 
     def _analyze_enip(self, packet: CapturedPacket) -> list[Evidence]:
         product_name = packet.get("product_name")
