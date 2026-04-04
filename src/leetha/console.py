@@ -10,7 +10,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import readline  # noqa: F401  — imported for input() history/editing
+try:
+    import readline  # noqa: F401  — input() history/editing on Unix
+except ImportError:
+    try:
+        import pyreadline3  # noqa: F401  — Windows alternative
+    except ImportError:
+        pass  # No line editing — input() still works, just no history
 import shlex
 import signal
 from datetime import datetime

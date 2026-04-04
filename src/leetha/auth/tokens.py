@@ -26,10 +26,14 @@ def save_admin_token(raw_token: str, leetha_dir: Path | None = None) -> Path:
     """Write raw admin token to ~/.leetha/admin-token with restricted permissions."""
     if leetha_dir is None:
         leetha_dir = _real_home() / ".leetha"
-    leetha_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    leetha_dir.mkdir(parents=True, exist_ok=True)
     token_file = leetha_dir / _TOKEN_FILENAME
     token_file.write_text(raw_token + "\n")
-    token_file.chmod(0o600)
+    try:
+        leetha_dir.chmod(0o700)
+        token_file.chmod(0o600)
+    except OSError:
+        pass  # Windows: Unix permission bits not supported
     return token_file
 
 

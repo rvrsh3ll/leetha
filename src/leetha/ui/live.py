@@ -9,11 +9,16 @@ from __future__ import annotations
 
 import asyncio
 import collections
-import select
 import sys
-import termios
 import time
-import tty
+
+try:
+    import select
+    import termios
+    import tty
+    _HAS_TERMINAL = True
+except ImportError:
+    _HAS_TERMINAL = False
 
 from rich.console import Console
 from leetha.app import LeethaApp
@@ -143,6 +148,15 @@ async def run_live(
     If *app* is provided, subscribe to it without managing its lifecycle.
     If *app* is None, create and manage a new LeethaApp.
     """
+    if not _HAS_TERMINAL:
+        from rich.console import Console
+        Console().print(
+            "[bold red]Live packet viewer requires a Unix terminal "
+            "(not available on Windows).[/bold red]\n"
+            "Use [bold]--web[/bold] for the web dashboard instead."
+        )
+        return
+
     console = Console(emoji=False)
     owns_app = app is None
     if owns_app:
