@@ -159,8 +159,12 @@ class LeethaApp:
 
         self._running = True
 
-        # Preload Huginn caches synchronously during startup.
-        self._preload_caches()
+        # Preload smaller Huginn caches in a background thread so the
+        # event loop stays responsive.  The massive huginn_mac_vendors
+        # file (667 MB) is NOT preloaded — it's accessed on-demand via
+        # the OUI index which is already built at import time.
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._preload_caches)
 
         if self.config.probe_enabled:
             probe_engine = ProbeEngine()
@@ -246,7 +250,9 @@ class LeethaApp:
             "huginn_combinations", "huginn_dhcpv6",  # small files first
             "huginn_dhcp_vendor", "huginn_dhcpv6_enterprise",
             "huginn_devices", "huginn_dhcp",
-            "huginn_mac_vendors",  # largest last
+            # NOTE: huginn_mac_vendors (667 MB) is NOT preloaded.
+            # The OUI index (75K prefixes) handles MAC lookups.
+            # The full file is loaded on-demand only when needed.
         ):
             if name in lookup._json_cache:
                 continue
