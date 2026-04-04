@@ -255,7 +255,9 @@ class LeethaConsole:
 
     async def run(self) -> None:
         """Run the REPL until the user exits."""
-        self._print_banner()
+        # Skip banner when re-launched with sudo (interfaces pre-selected)
+        if not self.interfaces:
+            self._print_banner()
 
         # Initialize database
         self.db = Database(self.config.db_path)

@@ -146,6 +146,10 @@ class LeethaApp:
         fix_ownership_recursive(self.config.data_dir)
         await self.spoofing_detector.initialize()
 
+        # Re-import admin token if the file exists but the DB has no tokens
+        # (happens when DB is deleted/recreated but token file persists).
+        await self._restore_admin_token()
+
         # Trigger processor auto-discovery so Pipeline sees all protocols
         import leetha.processors  # noqa: F401
 
@@ -193,9 +197,8 @@ class LeethaApp:
         """
         from leetha.platform import has_capture_privilege
         if not has_capture_privilege():
-            logger.warning(
-                "Cannot start capture — insufficient privileges. "
-                "Use sudo, setcap cap_net_raw+ep, or run as root."
+            logger.debug(
+                "Cannot start capture — insufficient privileges."
             )
             return False
 
@@ -434,6 +437,22 @@ class LeethaApp:
                     logger.debug("Worker %d pipeline failed", shard_id, exc_info=True)
         except asyncio.CancelledError:
             return
+
+    async def _restore_admin_token(self):
+        """Re-import admin token from file if DB has none (e.g., after DB reset)."""
+        try:
+            count = await self.db.count_active_admin_tokens()
+            if count > 0:
+                return  # DB already has tokens
+            from leetha.auth.tokens import load_admin_token, hash_token
+            raw = load_admin_token()
+            if not raw:
+                return  # No token file either
+            await self.db.create_auth_token(
+                hash_token(raw), role="admin", label="restored-from-file")
+            logger.info("Restored admin token from ~/.leetha/admin-token")
+        except Exception:
+            logger.debug("Admin token restore failed", exc_info=True)
 
     # -- Pipeline side-effect callbacks ----------------------------------
 
