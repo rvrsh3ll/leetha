@@ -31,6 +31,7 @@ _BPF_TCP_SYN = "tcp[tcpflags] & tcp-syn != 0"
 _BPF_TLS = "tcp port 443"
 _BPF_HTTP = "tcp port 80"
 _BPF_AI_PORTS = "tcp port 11434 or tcp port 7860 or tcp port 8188"
+_BPF_BANNER_PORTS = "tcp port 22 or tcp port 21 or tcp port 23 or tcp port 25 or tcp port 465 or tcp port 587 or tcp port 110 or tcp port 995 or tcp port 143 or tcp port 993 or tcp port 5900 or tcp port 5901 or tcp port 5902 or tcp port 5903 or tcp port 6667 or tcp port 6697 or tcp port 3306 or tcp port 5432 or tcp port 1433 or tcp port 27017 or tcp port 6379 or tcp port 445 or tcp port 139 or tcp port 3389 or tcp port 631 or tcp port 9100 or tcp port 515"
 _BPF_DHCP4 = "udp port 67 or udp port 68"
 _BPF_DHCP6 = "udp port 546 or udp port 547"
 _BPF_MDNS = "udp port 5353"
@@ -42,7 +43,7 @@ _BPF_ARP = "arp"
 
 _FULL_BPF = " or ".join([
     _BPF_L2_PROTOS, _BPF_SNMP, _BPF_TCP_SYN, _BPF_TLS, _BPF_HTTP,
-    _BPF_AI_PORTS, _BPF_DHCP4, _BPF_DHCP6, _BPF_MDNS, _BPF_SSDP,
+    _BPF_AI_PORTS, _BPF_BANNER_PORTS, _BPF_DHCP4, _BPF_DHCP6, _BPF_MDNS, _BPF_SSDP,
     _BPF_NAME_SVC, _BPF_DNS, _BPF_ICMP6, _BPF_ARP,
 ])
 
