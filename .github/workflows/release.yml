@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install build
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*
+
+  build-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          sudo apt-get update && sudo apt-get install -y ruby ruby-dev
+          sudo gem install fpm
+      - run: |
+          pip install .
+          fpm -s python -t deb \
+            --name leetha \
+            --version ${GITHUB_REF_NAME#v} \
+            --depends python3 \
+            --depends libpcap0.8 \
+            --description "Passive network fingerprinting and analysis engine" \
+            .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: "*.deb"
+
+  build-rpm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          sudo apt-get update && sudo apt-get install -y ruby ruby-dev rpm
+          sudo gem install fpm
+      - run: |
+          pip install .
+          fpm -s python -t rpm \
+            --name leetha \
+            --version ${GITHUB_REF_NAME#v} \
+            --depends python3 \
+            --depends libpcap \
+            --description "Passive network fingerprinting and analysis engine" \
+            .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: "*.rpm"
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          pip install . pyinstaller
+          pyinstaller --onefile --name leetha src/leetha/cli.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-binary
+          path: dist/leetha
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          pip install . pyinstaller
+          pyinstaller --onefile --name leetha src/leetha/cli.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-binary
+          path: dist/leetha.exe
+
+  release:
+    needs: [build-wheel, build-deb, build-rpm, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
