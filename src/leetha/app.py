@@ -129,7 +129,12 @@ class LeethaApp:
         self._tasks: list[asyncio.Task] = []
 
     async def start(self):
-        """Initialize DB and start capture."""
+        """Initialize DB, pipeline, and pattern caches.
+
+        Capture does NOT start here — call :meth:`start_capture` after the
+        user selects an interface (via CLI ``-i`` flag or the web UI).
+        This allows leetha to run the dashboard and DB without root.
+        """
         from leetha.platform import fix_ownership_recursive
         self.config.cache_dir.mkdir(parents=True, exist_ok=True)
         self.config.data_dir.mkdir(parents=True, exist_ok=True)
@@ -140,7 +145,6 @@ class LeethaApp:
         fix_ownership_recursive(self.config.cache_dir)
         fix_ownership_recursive(self.config.data_dir)
         await self.spoofing_detector.initialize()
-        loop = asyncio.get_running_loop()
 
         # Trigger processor auto-discovery so Pipeline sees all protocols
         import leetha.processors  # noqa: F401
@@ -153,15 +157,11 @@ class LeethaApp:
             on_gateway_hint=self._on_gateway_hint,
         )
 
-        self.capture_engine.start(self.packet_queue, loop)
         self._running = True
 
-        # Detect local MACs from capture interfaces for self-identification
-        self._detect_local_macs()
         # Preload Huginn caches synchronously during startup.
-        # This blocks for a few seconds but guarantees the caches are
-        # available before the first packet arrives.
         self._preload_caches()
+
         if self.config.probe_enabled:
             probe_engine = ProbeEngine()
             probe_engine.load_plugins()
@@ -175,11 +175,47 @@ class LeethaApp:
         # Start periodic analysis loop (stale source checks, etc.)
         self._tasks.append(asyncio.create_task(self._analysis_loop()))
 
-        # Re-evaluate unknown devices 60s after startup (after Huginn loads)
+        # If interfaces were provided at construction time, start capture
+        # immediately (CLI mode with -i flag).
+        if self.config.interfaces:
+            await self.start_capture()
+
+    async def start_capture(self, interfaces=None):
+        """Begin packet capture on the configured (or provided) interfaces.
+
+        Can be called at any time — on startup if ``-i`` was given, or later
+        when the user selects an interface via the web UI or console.
+        Requires capture privileges (root, sudo, or CAP_NET_RAW).
+        """
+        from leetha.platform import has_capture_privilege
+        if not has_capture_privilege():
+            logger.warning(
+                "Cannot start capture — insufficient privileges. "
+                "Use sudo, setcap cap_net_raw+ep, or run as root."
+            )
+            return False
+
+        if interfaces:
+            from leetha.capture.interfaces import InterfaceConfig
+            if isinstance(interfaces[0], str):
+                interfaces = [InterfaceConfig(name=n) for n in interfaces]
+            self.config.interfaces = interfaces
+            self.capture_engine = CaptureEngine(interfaces=interfaces)
+
+        if not self.config.interfaces:
+            logger.warning("No interfaces configured — cannot start capture")
+            return False
+
+        loop = asyncio.get_running_loop()
+        self.capture_engine.start(self.packet_queue, loop)
+
+        # Detect local MACs from capture interfaces for self-identification
+        self._detect_local_macs()
+
+        # Re-evaluate unknown devices 60s after capture starts
         self._tasks.append(asyncio.create_task(self._reevaluate_unknown_devices()))
 
         if self.config.worker_count > 1:
-            # Sharded pipeline: dispatch → router → N workers → Pipeline
             self._router = PacketRouter(num_workers=self.config.worker_count)
             self._tasks.append(asyncio.create_task(self._dispatch_loop()))
             for shard_id in range(self.config.worker_count):
@@ -187,8 +223,11 @@ class LeethaApp:
                     self._worker_loop(shard_id, self._router.workers[shard_id])
                 ))
         else:
-            # Single-worker mode
             self._tasks.append(asyncio.create_task(self._process_loop()))
+
+        logger.info("Capture started on %s",
+                     ", ".join(i.name for i in self.config.interfaces))
+        return True
 
     def _preload_caches(self):
         """Preload large Huginn JSON caches in a background thread.

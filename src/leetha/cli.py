@@ -265,7 +265,10 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
-    if _needs_capture(args) and not _has_capture_privilege():
+    # Only escalate privileges immediately for live mode (needs capture from
+    # the start).  Web and console modes can start without privileges and
+    # defer capture until the user selects an interface.
+    if args.live and not _has_capture_privilege():
         _escalate_privileges()
 
     if args.command == "interfaces":
