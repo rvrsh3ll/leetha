@@ -183,8 +183,8 @@ class TestLargeDatasets:
         assert verdict is not None
         assert 0 <= verdict.certainty <= 100
 
-        # Evidence buffer grew but did not crash the engine
-        assert len(pipeline._evidence_buffer[mac]) == 2_000
+        # Evidence buffer is capped (not unbounded) and did not crash
+        assert len(pipeline._evidence_buffer[mac]) <= 100  # capped by cap_evidence
 
     @pytest.mark.asyncio
     async def test_burst_500_packets_timing(self, pipeline):

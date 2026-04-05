@@ -29,6 +29,10 @@ class Store:
         """Open connection and create all tables."""
         self._conn = await aiosqlite.connect(self.db_path)
         self._conn.row_factory = aiosqlite.Row
+        # Match the legacy Database's performance pragmas
+        await self._conn.execute("PRAGMA journal_mode=WAL")
+        await self._conn.execute("PRAGMA synchronous=NORMAL")
+        await self._conn.execute("PRAGMA busy_timeout=5000")
         self.hosts = HostRepository(self._conn)
         self.findings = FindingRepository(self._conn)
         self.sightings = SightingRepository(self._conn)

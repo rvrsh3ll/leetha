@@ -170,6 +170,8 @@ class Pipeline:
         # 3. Accumulate evidence and compute verdict
         self._evidence_buffer[hw_addr].extend(evidence_list)
         verdict = self.verdict_engine.compute(hw_addr, self._evidence_buffer[hw_addr])
+        # Write capped evidence back to prevent unbounded growth
+        self._evidence_buffer[hw_addr] = list(verdict.evidence_chain)
 
         # 4. Upsert host — split IPv4 vs IPv6, detect MAC randomization
         raw_ip = packet.ip_addr
@@ -192,8 +194,11 @@ class Pipeline:
                 real_mac = client_id
 
         # Preserve existing disposition so we don't reset "known" back to "new"
-        existing_host = await self.store.hosts.find_by_addr(hw_addr)
-        disposition = existing_host.disposition if existing_host else "new"
+        try:
+            existing_host = await self.store.hosts.find_by_addr(hw_addr)
+            disposition = existing_host.disposition if existing_host else "new"
+        except Exception:
+            disposition = "new"
 
         host = Host(
             hw_addr=hw_addr,
@@ -204,7 +209,10 @@ class Pipeline:
             real_hw_addr=real_mac,
             disposition=disposition,
         )
-        await self.store.hosts.upsert(host)
+        try:
+            await self.store.hosts.upsert(host)
+        except Exception:
+            logger.debug("Host upsert failed for %s", hw_addr, exc_info=True)
 
         # 5. Evaluate finding rules BEFORE storing verdict
         #    so identity_shift can compare old vs new verdict
@@ -219,10 +227,16 @@ class Pipeline:
         # 6. Transition disposition from "new" to "known" after rules
         if host.disposition == "new":
             host.disposition = "known"
-            await self.store.hosts.upsert(host)
+            try:
+                await self.store.hosts.upsert(host)
+            except Exception:
+                pass
 
         # 7. Store verdict AFTER rules (so identity_shift sees the old verdict)
-        await self.store.verdicts.upsert(verdict)
+        try:
+            await self.store.verdicts.upsert(verdict)
+        except Exception:
+            logger.debug("Verdict upsert failed for %s", hw_addr, exc_info=True)
 
         if self._on_verdict:
             try:
