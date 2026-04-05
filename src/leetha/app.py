@@ -372,24 +372,147 @@ class LeethaApp:
             logger.debug("Re-evaluation failed", exc_info=True)
 
     async def _analysis_loop(self):
-        """Periodic analysis: stale source checks, infra offline, etc. Runs every 30 seconds."""
+        """Periodic analysis: stale sources, infra offline, data pruning. Runs every 30s."""
+        from leetha.store.models import Finding, FindingRule, AlertSeverity
         try:
+            cycle = 0
             while self._running:
                 await asyncio.sleep(30)
-                # Check for stale fingerprint sources
+                cycle += 1
+
+                # Check for stale fingerprint sources → write to new findings
                 try:
-                    await self.alert_engine.check_stale_sources(
-                        self.config.data_dir, max_age_days=self.config.sync_interval_days * 4
-                    )
+                    await self._check_stale_sources()
                 except Exception:
                     logger.debug("Stale source check failed", exc_info=True)
-                # Check for infrastructure devices gone offline
+
+                # Check for infrastructure devices gone offline → write to new findings
                 try:
-                    await self.alert_engine.check_infra_offline(offline_minutes=5)
+                    await self._check_infra_offline()
                 except Exception:
                     logger.debug("Infra offline check failed", exc_info=True)
+
+                # Prune old sightings every 10 minutes (cycle 20 × 30s)
+                if cycle % 20 == 0:
+                    try:
+                        await self._prune_sightings()
+                    except Exception:
+                        logger.debug("Sightings pruning failed", exc_info=True)
         except asyncio.CancelledError:
             return
+
+    async def _check_stale_sources(self):
+        """Check fingerprint source files for staleness, write findings to new Store."""
+        import time as _time
+        from pathlib import Path
+        from leetha.store.models import Finding, FindingRule, AlertSeverity
+
+        data_dir = Path(self.config.data_dir)
+        if not data_dir.exists():
+            return
+        max_age_days = self.config.sync_interval_days * 4
+        max_age_seconds = max_age_days * 86400
+        now = _time.time()
+
+        for filepath in data_dir.iterdir():
+            if not filepath.suffix == ".json":
+                continue
+            age = now - filepath.stat().st_mtime
+            if age > max_age_seconds:
+                days_old = int(age / 86400)
+                # Rate-limit: check if we already have an active stale_source finding
+                try:
+                    existing = await self.store.connection.execute(
+                        "SELECT id FROM findings WHERE rule = ? AND resolved = 0 "
+                        "AND message LIKE ? LIMIT 1",
+                        (FindingRule.STALE_SOURCE.value, f"%{filepath.name}%"),
+                    )
+                    if await existing.fetchone():
+                        continue
+                except Exception:
+                    pass
+                finding = Finding(
+                    hw_addr="00:00:00:00:00:00",
+                    rule=FindingRule.STALE_SOURCE,
+                    severity=AlertSeverity.WARNING,
+                    message=f"Fingerprint source {filepath.name} is {days_old} days old "
+                            f"(threshold: {max_age_days}d). Run 'leetha sync' to update.",
+                )
+                await self.store.findings.add(finding)
+
+    async def _check_infra_offline(self):
+        """Check for infrastructure devices gone offline using new Store."""
+        from datetime import datetime, timedelta
+        from leetha.store.models import Finding, FindingRule, AlertSeverity
+        from leetha.topology import _normalize_device_type, _INFRA_TYPES
+
+        threshold = datetime.now() - timedelta(minutes=5)
+        verdicts = await self.store.verdicts.find_all(limit=1000)
+
+        for v in verdicts:
+            if not v.category:
+                continue
+            normalized = _normalize_device_type(v.category)
+            if normalized not in _INFRA_TYPES:
+                continue
+
+            host = await self.store.hosts.find_by_addr(v.hw_addr)
+            if not host:
+                continue
+            if host.disposition == "self":
+                continue
+
+            last_seen = host.last_active
+            if last_seen is None or last_seen >= threshold:
+                continue
+
+            # Rate-limit: don't re-alert for same device
+            try:
+                existing = await self.store.connection.execute(
+                    "SELECT id FROM findings WHERE hw_addr = ? AND rule = ? "
+                    "AND resolved = 0 LIMIT 1",
+                    (v.hw_addr, FindingRule.IDENTITY_SHIFT.value),
+                )
+                # Use a distinct message prefix to identify infra_offline findings
+                existing2 = await self.store.connection.execute(
+                    "SELECT id FROM findings WHERE hw_addr = ? AND resolved = 0 "
+                    "AND message LIKE '%offline%' LIMIT 1",
+                    (v.hw_addr,),
+                )
+                if await existing2.fetchone():
+                    continue
+            except Exception:
+                pass
+
+            minutes_ago = int((datetime.now() - last_seen).total_seconds() / 60)
+            is_gateway = normalized in ("router", "gateway", "firewall")
+            severity = AlertSeverity.CRITICAL if is_gateway else AlertSeverity.WARNING
+            label = v.hostname or v.vendor or v.hw_addr
+
+            finding = Finding(
+                hw_addr=v.hw_addr,
+                rule=FindingRule.IDENTITY_SHIFT,
+                severity=severity,
+                message=(
+                    f"{'Gateway' if is_gateway else 'Infrastructure device'} offline: "
+                    f"{label} ({v.hw_addr}) — last seen {minutes_ago} minutes ago"
+                ),
+            )
+            await self.store.findings.add(finding)
+
+    async def _prune_sightings(self, retention_days: int = 7):
+        """Delete sightings older than retention_days to prevent DB bloat."""
+        try:
+            cursor = await self.store.connection.execute(
+                "DELETE FROM sightings WHERE timestamp < datetime('now', ?)",
+                (f"-{retention_days} days",),
+            )
+            await self.store.connection.commit()
+            if cursor.rowcount > 0:
+                logger.info("Pruned %d sightings older than %d days",
+                           cursor.rowcount, retention_days)
+        except Exception:
+            logger.debug("Sighting prune failed", exc_info=True)
 
     def _handle_dhcp_anomalies(self, future):
         """Process DHCP anomaly results from background thread."""
