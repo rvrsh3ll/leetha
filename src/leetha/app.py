@@ -465,7 +465,10 @@ class LeethaApp:
     # -- Pipeline side-effect callbacks ----------------------------------
 
     async def _on_verdict_event(self, hw_addr, verdict, packet):
-        """Emit WebSocket event after verdict computed."""
+        """Emit WebSocket event after verdict computed, run spoofing checks."""
+        # Run MAC spoofing / fingerprint drift detection on every verdict
+        await self._check_device_spoofing(hw_addr, verdict)
+
         # Include packet info for the console live stream
         packet_info = None
         if packet:
@@ -531,6 +534,56 @@ class LeethaApp:
                 await self.store.findings.add(finding)
         except Exception:
             logger.debug("ARP spoofing check failed", exc_info=True)
+
+    async def _check_device_spoofing(self, hw_addr, verdict):
+        """Run MAC spoofing / fingerprint drift checks after verdict update.
+
+        Calls the SpoofingDetector.process_device_update() which compares
+        the current device fingerprint against historical snapshots to
+        detect identity shifts, OUI mismatches, and MAC spoofing.
+        """
+        from leetha.store.models import (
+            Device, Finding, FindingRule, AlertSeverity, AlertType,
+        )
+        try:
+            # Build a Device object from verdict + host for the spoofing detector
+            host = await self.store.hosts.find_by_addr(hw_addr)
+            device = Device(
+                mac=hw_addr,
+                ip_v4=host.ip_addr if host else None,
+                ip_v6=host.ip_v6 if host else None,
+                manufacturer=verdict.vendor,
+                device_type=verdict.category,
+                os_family=verdict.platform,
+                os_version=verdict.platform_version,
+                hostname=verdict.hostname,
+                confidence=verdict.certainty,
+                is_randomized_mac=host.mac_randomized if host else False,
+            )
+
+            # Get OUI vendor from pipeline evidence buffer
+            oui_vendor = None
+            if self.pipeline:
+                oui_vendor = self.pipeline._oui_vendors.get(hw_addr)
+
+            alerts = await self.spoofing_detector.process_device_update(
+                device, oui_vendor=oui_vendor)
+
+            _ALERT_TO_FINDING = {
+                AlertType.SPOOFING: FindingRule.IDENTITY_SHIFT,
+                AlertType.MAC_SPOOFING: FindingRule.IDENTITY_SHIFT,
+            }
+            for alert in alerts:
+                rule = _ALERT_TO_FINDING.get(alert.alert_type, FindingRule.IDENTITY_SHIFT)
+                finding = Finding(
+                    hw_addr=alert.device_mac,
+                    rule=rule,
+                    severity=AlertSeverity(alert.severity.value),
+                    message=alert.message,
+                )
+                await self.store.findings.add(finding)
+        except Exception:
+            logger.debug("Device spoofing check failed", exc_info=True)
 
     def _on_dhcp_packet(self, packet):
         """Submit DHCP options for anomaly analysis."""
