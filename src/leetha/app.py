@@ -689,8 +689,19 @@ class LeethaApp:
             if self.pipeline:
                 oui_vendor = self.pipeline._oui_vendors.get(hw_addr)
 
+            async def _snapshot_reader(mac, limit=1):
+                return await self.store.snapshots.get_latest(mac, limit)
+
+            async def _snapshot_writer(hw_addr, os_family=None, manufacturer=None,
+                                       device_type=None, hostname=None, oui_vendor=None):
+                await self.store.snapshots.add(
+                    hw_addr=hw_addr, os_family=os_family, manufacturer=manufacturer,
+                    device_type=device_type, hostname=hostname, oui_vendor=oui_vendor)
+
             alerts = await self.spoofing_detector.process_device_update(
-                device, oui_vendor=oui_vendor)
+                device, oui_vendor=oui_vendor,
+                snapshot_reader=_snapshot_reader,
+                snapshot_writer=_snapshot_writer)
 
             _ALERT_TO_FINDING = {
                 AlertType.SPOOFING: FindingRule.IDENTITY_SHIFT,

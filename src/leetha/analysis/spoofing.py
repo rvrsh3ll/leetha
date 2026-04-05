@@ -244,20 +244,32 @@ class AddressVerifier:
         self,
         device: Device,
         oui_vendor: str | None = None,
+        snapshot_reader=None,
+        snapshot_writer=None,
     ) -> list[Alert]:
         """Evaluate a device record change for signs of MAC cloning."""
         findings: list[Alert] = []
 
         # Randomized MACs shift fingerprints routinely -- skip alerting
         if device.is_randomized_mac:
-            await self._db.add_fingerprint_snapshot(
-                mac=device.mac,
-                os_family=device.os_family,
-                manufacturer=device.manufacturer,
-                device_type=device.device_type,
-                hostname=device.hostname,
-                oui_vendor=oui_vendor,
-            )
+            if snapshot_writer:
+                await snapshot_writer(
+                    hw_addr=device.mac,
+                    os_family=device.os_family,
+                    manufacturer=device.manufacturer,
+                    device_type=device.device_type,
+                    hostname=device.hostname,
+                    oui_vendor=oui_vendor,
+                )
+            else:
+                await self._db.add_fingerprint_snapshot(
+                    mac=device.mac,
+                    os_family=device.os_family,
+                    manufacturer=device.manufacturer,
+                    device_type=device.device_type,
+                    hostname=device.hostname,
+                    oui_vendor=oui_vendor,
+                )
             return findings
 
         # --- Check 5: fingerprint shift ---
@@ -275,7 +287,10 @@ class AddressVerifier:
             except Exception:
                 pass
 
-        prior_snapshots = await self._db.get_fingerprint_history(device.mac, limit=1)
+        if snapshot_reader:
+            prior_snapshots = await snapshot_reader(device.mac, limit=1)
+        else:
+            prior_snapshots = await self._db.get_fingerprint_history(device.mac, limit=1)
         if prior_snapshots:
             prev = prior_snapshots[0]
             deltas = []
@@ -381,14 +396,24 @@ class AddressVerifier:
                     ))
 
         # Persist snapshot
-        await self._db.add_fingerprint_snapshot(
-            mac=device.mac,
-            os_family=device.os_family,
-            manufacturer=device.manufacturer,
-            device_type=device.device_type,
-            hostname=device.hostname,
-            oui_vendor=oui_vendor,
-        )
+        if snapshot_writer:
+            await snapshot_writer(
+                hw_addr=device.mac,
+                os_family=device.os_family,
+                manufacturer=device.manufacturer,
+                device_type=device.device_type,
+                hostname=device.hostname,
+                oui_vendor=oui_vendor,
+            )
+        else:
+            await self._db.add_fingerprint_snapshot(
+                mac=device.mac,
+                os_family=device.os_family,
+                manufacturer=device.manufacturer,
+                device_type=device.device_type,
+                hostname=device.hostname,
+                oui_vendor=oui_vendor,
+            )
 
         return findings
 
