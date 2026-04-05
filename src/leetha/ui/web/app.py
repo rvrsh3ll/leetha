@@ -117,6 +117,7 @@ def _build_device_dict(verdict, host) -> dict:
         "last_seen": host.last_active.isoformat() if host and host.last_active else None,
         "alert_status": host.disposition if host else "new",
         "is_randomized_mac": host.mac_randomized if host else False,
+        "correlated_mac": host.real_hw_addr if host else None,
     }
     if verdict and verdict.evidence_chain:
         d["raw_evidence"] = {

@@ -147,11 +147,33 @@ class Pipeline:
         self._evidence_buffer[hw_addr].extend(evidence_list)
         verdict = self.verdict_engine.compute(hw_addr, self._evidence_buffer[hw_addr])
 
-        # 4. Upsert host
+        # 4. Upsert host — split IPv4 vs IPv6, detect MAC randomization
+        raw_ip = packet.ip_addr
+        ip_v4 = None
+        ip_v6 = None
+        if raw_ip and raw_ip != "0.0.0.0":
+            if ":" in raw_ip:
+                ip_v6 = raw_ip
+            else:
+                ip_v4 = raw_ip
+
+        # MAC randomization detection
+        from leetha.fingerprint.mac_intel import is_randomized_mac
+        mac_random = is_randomized_mac(hw_addr)
+        real_mac = None
+        if mac_random and protocol == "dhcpv4":
+            # Option 61 may contain the real MAC
+            client_id = packet.fields.get("client_id", "")
+            if len(client_id) == 17 and client_id.count(":") == 5:
+                real_mac = client_id
+
         host = Host(
             hw_addr=hw_addr,
-            ip_addr=packet.ip_addr if packet.ip_addr and packet.ip_addr != "0.0.0.0" else None,
+            ip_addr=ip_v4,
+            ip_v6=ip_v6,
             last_active=datetime.now(),
+            mac_randomized=mac_random,
+            real_hw_addr=real_mac,
         )
         await self.store.hosts.upsert(host)
 
