@@ -238,6 +238,12 @@ class Pipeline:
         except Exception:
             logger.debug("Verdict upsert failed for %s", hw_addr, exc_info=True)
 
+        # 8. Resolve device identity
+        try:
+            await self._resolve_identity(hw_addr, verdict, host)
+        except Exception:
+            logger.debug("Identity resolution failed for %s", hw_addr, exc_info=True)
+
         if self._on_verdict:
             try:
                 await self._on_verdict(hw_addr, verdict, packet)
@@ -356,6 +362,89 @@ class Pipeline:
             model=match.model,
             raw=match.raw_data,
         )
+
+    async def _resolve_identity(self, hw_addr: str, verdict, host) -> None:
+        """Resolve or correlate a device identity for the given MAC."""
+        from leetha.fingerprint.mac_intel import (
+            is_randomized_mac, compute_correlation_score, CORRELATION_THRESHOLD,
+        )
+
+        if not is_randomized_mac(hw_addr):
+            identity = await self.store.identities.find_or_create(hw_addr)
+        elif host.real_hw_addr:
+            identity = await self.store.identities.find_or_create(host.real_hw_addr)
+        else:
+            signals = self._build_correlation_signals(hw_addr)
+            identity = await self._correlate_or_create(hw_addr, signals)
+
+        # Update identity metadata from verdict
+        if verdict.vendor:
+            identity.manufacturer = verdict.vendor
+        if verdict.category:
+            identity.device_type = verdict.category
+        if verdict.platform:
+            identity.os_family = verdict.platform
+        if verdict.platform_version:
+            identity.os_version = verdict.platform_version
+        if verdict.hostname:
+            identity.hostname = verdict.hostname
+        if verdict.certainty:
+            identity.confidence = max(identity.confidence, verdict.certainty)
+        identity.last_seen = datetime.now()
+
+        await self.store.identities.update(identity)
+
+        # Link host to identity if changed
+        if identity.id is not None and identity.id != host.identity_id:
+            try:
+                await self.store._conn.execute(
+                    "UPDATE hosts SET identity_id = ? WHERE hw_addr = ?",
+                    (identity.id, hw_addr),
+                )
+                await self.store._conn.commit()
+            except Exception:
+                logger.debug("Failed to link host %s to identity %s",
+                             hw_addr, identity.id, exc_info=True)
+
+    def _build_correlation_signals(self, hw_addr: str) -> dict:
+        """Extract correlation signals from accumulated evidence."""
+        signals: dict[str, str] = {}
+        for ev in self._evidence_buffer.get(hw_addr, []):
+            if not signals.get("hostname") and getattr(ev, "hostname", None):
+                signals["hostname"] = ev.hostname.lower()
+            raw = getattr(ev, "raw", None) or {}
+            if not signals.get("dhcp_opt60") and raw.get("opt60"):
+                signals["dhcp_opt60"] = str(raw["opt60"]).lower()
+            if not signals.get("dhcp_opt55") and raw.get("opt55"):
+                signals["dhcp_opt55"] = str(raw["opt55"]).lower()
+            if not signals.get("mdns_name") and raw.get("name"):
+                signals["mdns_name"] = str(raw["name"]).lower()
+        return signals
+
+    async def _correlate_or_create(self, hw_addr: str, signals: dict):
+        """Find an existing identity matching signals, or create a new one."""
+        from leetha.fingerprint.mac_intel import (
+            compute_correlation_score, CORRELATION_THRESHOLD,
+        )
+
+        if not signals:
+            return await self.store.identities.find_or_create(hw_addr)
+
+        all_identities = await self.store.identities.find_all(limit=1000)
+        best_score = 0.0
+        best_identity = None
+        for ident in all_identities:
+            score = compute_correlation_score(signals, ident.fingerprint)
+            if score > best_score:
+                best_score = score
+                best_identity = ident
+
+        if best_score >= CORRELATION_THRESHOLD and best_identity is not None:
+            return best_identity
+
+        identity = await self.store.identities.find_or_create(hw_addr)
+        identity.fingerprint = signals
+        return identity
 
     async def process_batch(self, packets: list[CapturedPacket]) -> None:
         """Process multiple packets. Can be parallelized in future."""
