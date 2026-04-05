@@ -323,8 +323,8 @@ class LeethaApp:
             pass
 
     def subscribe(self) -> asyncio.Queue:
-        """Subscribe to real-time device/alert events. Returns an event queue."""
-        q: asyncio.Queue = asyncio.Queue()
+        """Subscribe to real-time device/alert events. Returns a bounded event queue."""
+        q: asyncio.Queue = asyncio.Queue(maxsize=500)
         self.event_subscribers.append(q)
         return q
 
@@ -476,6 +476,7 @@ class LeethaApp:
                 "dst_ip": getattr(packet, "target_ip", None),
                 "fields": packet.fields,
                 "interface": packet.interface,
+                "timestamp": packet.captured_at.isoformat() if hasattr(packet, "captured_at") and packet.captured_at else None,
             }
         event = {
             "type": "device_update",
@@ -483,11 +484,24 @@ class LeethaApp:
             "verdict": verdict.to_dict() if hasattr(verdict, "to_dict") else {},
             "packet": packet_info,
         }
+        stale = []
         for sub in self.event_subscribers:
             try:
                 sub.put_nowait(event)
             except asyncio.QueueFull:
-                pass
+                # Drop oldest event to make room, preventing unbounded backlog
+                try:
+                    sub.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                try:
+                    sub.put_nowait(event)
+                except asyncio.QueueFull:
+                    stale.append(sub)
+        # Remove subscribers that can't keep up
+        for sub in stale:
+            logger.warning("Removing stale WebSocket subscriber (queue full)")
+            self.event_subscribers.remove(sub)
 
     async def _on_arp_packet(self, packet):
         """Run spoofing detection on ARP packets."""

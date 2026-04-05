@@ -345,6 +345,17 @@ async def run_query(request: Request):
     if "limit" not in sql.lower():
         sql = sql.rstrip(";") + " LIMIT 10000"
 
+    # Try new Store first (has verdicts, hosts, sightings, findings tables)
+    try:
+        cursor = await app_instance.store.connection.execute(sql)
+        rows = await cursor.fetchall()
+        if rows:
+            columns = [d[0] for d in cursor.description] if cursor.description else []
+            return {"columns": columns, "rows": [list(r) for r in rows]}
+        return {"columns": [], "rows": []}
+    except Exception:
+        pass
+    # Fall back to old Database (has devices, observations, alerts, etc.)
     try:
         result = await app_instance.db.execute_readonly_query(sql)
         return result
@@ -785,76 +796,74 @@ async def api_device(mac: str):
     }
 
 
+def _load_overrides() -> dict:
+    """Load manual overrides from file-based store."""
+    data_dir = getattr(app_instance.config, "data_dir", None)
+    if not data_dir:
+        return {}
+    path = data_dir / "device_overrides.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_overrides(overrides: dict):
+    """Persist manual overrides to file."""
+    data_dir = getattr(app_instance.config, "data_dir", None)
+    if not data_dir:
+        return
+    path = data_dir / "device_overrides.json"
+    path.write_text(json.dumps(overrides, indent=2))
+
+
 @fastapi_app.get("/api/devices/{mac}/override")
 async def get_device_override(mac: str):
-    """Get the manual override for a device.
-
-    TODO: migrate overrides to new schema — currently still reads from old devices table.
-    """
+    """Get the manual override for a device."""
     mac = _validate_mac(mac)
     if not mac:
         return JSONResponse(status_code=400, content={"error": "Invalid MAC address format"})
-    try:
-        device = await app_instance.db.get_device(mac)
-    except Exception:
-        device = None
-    if device is None:
-        return {"mac": mac, "override": None}
-    return {"mac": mac, "override": device.manual_override}
+    overrides = _load_overrides()
+    return {"mac": mac, "override": overrides.get(mac)}
 
 
 @fastapi_app.put("/api/devices/{mac}/override")
 async def set_device_override(mac: str, request: Request):
-    """Set or update the manual override for a device.
-
-    TODO: migrate overrides to new schema — currently still writes to old devices table.
-    """
+    """Set or update the manual override for a device."""
     mac = _validate_mac(mac)
     if not mac:
         return JSONResponse(status_code=400, content={"error": "Invalid MAC address format"})
-    device = await app_instance.db.get_device(mac)
-    if device is None:
+
+    # Verify device exists in new Store
+    verdict = await app_instance.store.verdicts.find_by_addr(mac)
+    host = await app_instance.store.hosts.find_by_addr(mac)
+    if not verdict and not host:
         return JSONResponse(status_code=404, content={"error": "Device not found"})
 
     override_data = await request.json()
-
-    # Only allow known override fields
     allowed_fields = {"device_type", "manufacturer", "os_family", "os_version", "model"}
     filtered = {k: v for k, v in override_data.items() if k in allowed_fields}
 
     if not filtered:
         return JSONResponse(status_code=400, content={"error": "No valid override fields provided"})
 
-    device.manual_override = filtered
-
-    # Apply override to device fields immediately
-    for field in ("device_type", "manufacturer", "os_family", "os_version"):
-        val = filtered.get(field)
-        if val is not None:
-            setattr(device, field, val)
-
-    await app_instance.db.upsert_device(device)
+    overrides = _load_overrides()
+    overrides[mac] = filtered
+    _save_overrides(overrides)
     return {"status": "ok", "mac": mac, "override": filtered}
 
 
 @fastapi_app.delete("/api/devices/{mac}/override")
 async def delete_device_override(mac: str):
-    """Clear the manual override for a device.
-
-    TODO: migrate overrides to new schema — currently still writes to old devices table.
-    """
+    """Clear the manual override for a device."""
     mac = _validate_mac(mac)
     if not mac:
         return JSONResponse(status_code=400, content={"error": "Invalid MAC address format"})
-    try:
-        device = await app_instance.db.get_device(mac)
-    except Exception:
-        device = None
-    if device is None:
-        return {"status": "ok", "mac": mac}
-
-    device.manual_override = None
-    await app_instance.db.upsert_device(device)
+    overrides = _load_overrides()
+    overrides.pop(mac, None)
+    _save_overrides(overrides)
     return {"status": "ok", "mac": mac}
 
 
@@ -899,12 +908,55 @@ async def api_trust_remove(mac: str):
 
 @fastapi_app.get("/api/devices/{mac}/arp-history")
 async def api_device_arp_history(mac: str):
-    """Get ARP history for a device."""
+    """Get ARP history for a device from sightings."""
     mac = _validate_mac(mac)
     if not mac:
         return JSONResponse(status_code=400, content={"error": "Invalid MAC address format"})
-    history = await app_instance.db.get_arp_history_for_mac(mac.lower())
+    history = await _get_arp_history_from_sightings(mac=mac.lower())
     return {"history": history}
+
+
+async def _get_arp_history_from_sightings(mac: str | None = None, ip: str | None = None) -> list:
+    """Derive ARP history from sightings table."""
+    history = []
+    try:
+        if mac:
+            cursor = await app_instance.store.connection.execute(
+                "SELECT hw_addr, payload, timestamp FROM sightings "
+                "WHERE hw_addr = ? AND source = 'arp' ORDER BY timestamp DESC LIMIT 100",
+                (mac,),
+            )
+        elif ip:
+            cursor = await app_instance.store.connection.execute(
+                "SELECT hw_addr, payload, timestamp FROM sightings "
+                "WHERE source = 'arp' ORDER BY timestamp DESC LIMIT 500",
+            )
+        else:
+            return []
+        rows = await cursor.fetchall()
+        for r in rows:
+            payload = json.loads(r[1]) if isinstance(r[1], str) else (r[1] or {})
+            src_ip = payload.get("src_ip") or payload.get("sender_ip") or ""
+            if ip and src_ip != ip:
+                continue
+            history.append({
+                "mac": r[0],
+                "ip": src_ip,
+                "first_seen": r[2],
+                "last_seen": r[2],
+            })
+    except Exception:
+        pass
+    # Deduplicate by mac+ip, keeping earliest first_seen and latest last_seen
+    merged: dict[tuple, dict] = {}
+    for h in history:
+        key = (h["mac"], h["ip"])
+        if key in merged:
+            merged[key]["last_seen"] = max(merged[key]["last_seen"], h["last_seen"])
+            merged[key]["first_seen"] = min(merged[key]["first_seen"], h["first_seen"])
+        else:
+            merged[key] = h
+    return list(merged.values())
 
 
 # --- Suppression Rules API ---
@@ -946,13 +998,11 @@ async def api_suppressions_remove(rule_id: int):
 
 @fastapi_app.get("/api/arp-history")
 async def api_arp_history(mac: str | None = None, ip: str | None = None):
-    """Query ARP history by MAC or IP."""
-    if mac:
-        history = await app_instance.db.get_arp_history_for_mac(mac.lower())
-    elif ip:
-        history = await app_instance.db.get_arp_history_for_ip(ip)
-    else:
+    """Query ARP history by MAC or IP from sightings."""
+    if not mac and not ip:
         return JSONResponse({"error": "Provide mac or ip query parameter"}, status_code=400)
+    history = await _get_arp_history_from_sightings(
+        mac=mac.lower() if mac else None, ip=ip)
     return {"history": history}
 
 
@@ -1475,21 +1525,21 @@ async def get_device_timeline(mac: str, limit: int = 100):
                       "source_type": s.source, "raw_data": json.dumps(s.payload) if isinstance(s.payload, dict) else str(s.payload),
                       "confidence": int(s.certainty * 100) if s.certainty <= 1 else int(s.certainty)} for s in sightings]
 
+    # Derive fingerprint history from verdict evidence chain
     fp_history = []
-    try:
-        async with app_instance.db.db.execute(
-            "SELECT timestamp, device_type, manufacturer, os_family, hostname, oui_vendor FROM fingerprint_history WHERE mac = ? ORDER BY timestamp DESC LIMIT 50",
-            (mac,),
-        ) as cursor:
-            fp_history = [dict(row) for row in await cursor.fetchall()]
-    except Exception:
-        pass
+    if verdict and verdict.evidence_chain:
+        for ev in verdict.evidence_chain:
+            fp_history.append({
+                "timestamp": ev.observed_at.isoformat() if hasattr(ev.observed_at, 'isoformat') else str(ev.observed_at),
+                "device_type": ev.category,
+                "manufacturer": ev.vendor,
+                "os_family": ev.platform,
+                "hostname": ev.hostname,
+                "oui_vendor": ev.vendor if ev.source == "oui" else None,
+            })
 
-    arp_history = []
-    try:
-        arp_history = await app_instance.db.get_arp_history_for_mac(mac)
-    except Exception:
-        pass
+    # Derive ARP history from sightings
+    arp_history = await _get_arp_history_from_sightings(mac=mac)
 
     # Get findings for this device as alert-compatible dicts
     findings = []
@@ -1514,12 +1564,47 @@ async def get_device_timeline(mac: str, limit: int = 100):
 
 @fastapi_app.get("/api/devices/{mac}/services")
 async def get_device_services(mac: str):
-    """Return active probe results for a device."""
+    """Return discovered services for a device from sightings."""
     mac = _validate_mac(mac)
     if not mac:
         return JSONResponse(status_code=400, content={"error": "Invalid MAC address format"})
-    services = await app_instance.db.get_device_services(mac)
-    return services
+    services = []
+    try:
+        cursor = await app_instance.store.connection.execute(
+            "SELECT source, payload, timestamp FROM sightings "
+            "WHERE hw_addr = ? AND source IN ('service_banner', 'tls', 'mdns', 'ssdp', 'http_useragent') "
+            "ORDER BY timestamp DESC LIMIT 100",
+            (mac,),
+        )
+        rows = await cursor.fetchall()
+        seen = set()
+        for r in rows:
+            payload = json.loads(r[1]) if isinstance(r[1], str) else (r[1] or {})
+            key = (r[0], payload.get("service") or payload.get("service_type") or payload.get("sni") or "")
+            if key in seen:
+                continue
+            seen.add(key)
+            services.append({
+                "protocol": r[0],
+                "service": payload.get("service") or payload.get("service_type") or r[0],
+                "port": payload.get("port") or payload.get("dst_port"),
+                "banner": payload.get("raw_banner") or payload.get("server"),
+                "sni": payload.get("sni"),
+                "timestamp": r[2],
+                "details": payload,
+            })
+    except Exception:
+        pass
+    # Also include old probe results if available
+    try:
+        old_services = await app_instance.db.get_device_services(mac)
+        if isinstance(old_services, dict) and old_services.get("services"):
+            services.extend(old_services["services"])
+        elif isinstance(old_services, list):
+            services.extend(old_services)
+    except Exception:
+        pass
+    return {"services": services}
 
 
 _attack_surface_cache = None
@@ -1527,34 +1612,201 @@ _attack_surface_cache_ts = 0.0
 _ATTACK_SURFACE_TTL = 30.0  # seconds
 
 
+async def _build_context_from_store(store, data_dir, interface=None,
+                                    attacker_ip=None, interface_type="local"):
+    """Build an AnalysisContext from the new Store tables (verdicts/hosts/sightings).
+
+    This replaces the old _build_context which reads from the legacy 'devices' table
+    that the new pipeline no longer populates.
+    """
+    from datetime import datetime
+    from leetha.analysis.attack_surface import AnalysisContext
+    from leetha.store.models import Device, Observation
+
+    # Build Device objects from verdicts + hosts
+    verdicts = await store.verdicts.find_all(limit=1000)
+    devices = []
+    for v in verdicts:
+        h = await store.hosts.find_by_addr(v.hw_addr)
+        devices.append(Device(
+            mac=v.hw_addr,
+            ip_v4=h.ip_addr if h else None,
+            ip_v6=h.ip_v6 if h else None,
+            manufacturer=v.vendor,
+            device_type=v.category,
+            os_family=v.platform,
+            os_version=v.platform_version,
+            hostname=v.hostname,
+            confidence=v.certainty,
+            first_seen=h.discovered_at if h and h.discovered_at else datetime.now(),
+            last_seen=h.last_active if h and h.last_active else datetime.now(),
+            alert_status=h.disposition if h else "new",
+            is_randomized_mac=h.mac_randomized if h else False,
+            correlated_mac=h.real_hw_addr if h else None,
+        ))
+    device_map = {d.mac: d for d in devices}
+
+    # Build observations from sightings
+    observations_by_mac: dict[str, list] = {}
+    observations_by_type: dict[str, list] = {}
+    for d in devices:
+        sightings = await store.sightings.for_host(d.mac, limit=500)
+        obs_list = []
+        for s in sightings:
+            obs = Observation(
+                device_mac=s.hw_addr,
+                source_type=s.source,
+                raw_data=json.dumps(s.payload) if isinstance(s.payload, dict) else str(s.payload or ""),
+                match_result="{}",
+                confidence=int(s.certainty * 100) if s.certainty <= 1.0 else int(s.certainty),
+                timestamp=s.timestamp,
+                interface=s.interface,
+                network=s.network,
+            )
+            obs_list.append(obs)
+            observations_by_type.setdefault(s.source, []).append(obs)
+        observations_by_mac[d.mac] = obs_list
+
+    # Probe results from old DB (still stored there)
+    probe_results = []
+    probe_by_mac: dict[str, list[dict]] = {}
+    probe_by_service: dict[str, list[dict]] = {}
+    try:
+        probe_results = await app_instance.db.list_probe_targets(status="completed")
+        for p in probe_results:
+            probe_by_mac.setdefault(p["mac"], []).append(p)
+            if p.get("result"):
+                try:
+                    result = json.loads(p["result"]) if isinstance(p["result"], str) else p["result"]
+                    svc = result.get("service", "")
+                    if svc:
+                        probe_by_service.setdefault(svc, []).append(p)
+                except (json.JSONDecodeError, TypeError, AttributeError):
+                    pass
+    except Exception:
+        pass
+
+    # Network context
+    gateway_ip = None
+    dc_ip = None
+    for d in devices:
+        if d.device_type in ("router", "gateway", "firewall") and d.ip_v4:
+            gateway_ip = gateway_ip or d.ip_v4
+
+    # Domain from DNS observations
+    domain = None
+    for obs in observations_by_type.get("dns", []):
+        try:
+            raw = json.loads(obs.raw_data) if isinstance(obs.raw_data, str) else {}
+        except (json.JSONDecodeError, TypeError):
+            raw = {}
+        qname = raw.get("query_name", "").lower().rstrip(".")
+        for tld in (".local", ".corp", ".internal", ".lan"):
+            if qname.endswith(tld):
+                parts = qname.split(".")
+                if len(parts) >= 2:
+                    domain = ".".join(parts[-2:])
+                    break
+        if domain:
+            break
+
+    # Exclusions
+    exclusions = []
+    if data_dir:
+        exc_file = data_dir / "attack_surface_exclusions.json"
+        if exc_file.exists():
+            try:
+                exc_data = json.loads(exc_file.read_text())
+                exclusions = exc_data.get("exclusions", [])
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    return AnalysisContext(
+        devices=devices,
+        observations_by_mac=observations_by_mac,
+        observations_by_type=observations_by_type,
+        probe_results=probe_results,
+        probe_by_mac=probe_by_mac,
+        probe_by_service=probe_by_service,
+        device_map=device_map,
+        data_dir=data_dir,
+        interface=interface or "eth0",
+        interface_type=interface_type,
+        gateway_ip=gateway_ip,
+        domain=domain,
+        attacker_ip=attacker_ip,
+        dc_ip=dc_ip,
+        exclusions=exclusions,
+    )
+
+
 async def _get_cached_attack_surface():
     global _attack_surface_cache, _attack_surface_cache_ts
     now = _time.monotonic()
     if _attack_surface_cache is None or (now - _attack_surface_cache_ts) > _ATTACK_SURFACE_TTL:
-        from leetha.analysis.attack_surface import analyze_attack_surface
+        from datetime import datetime
+        from leetha.analysis.attack_surface import (
+            build_chains, _build_summary,
+        )
         data_dir = getattr(app_instance.config, "data_dir", None)
         interface = getattr(app_instance.config, "interface", None)
+
+        # Primary path: build context from new Store and run analysis rules
         try:
-            _attack_surface_cache = await analyze_attack_surface(app_instance.db, data_dir, interface=interface)
-        except Exception:
-            # Fallback: build basic analysis from new store when old tables are unavailable
+            ctx = await _build_context_from_store(
+                app_instance.store, data_dir, interface=interface)
+
+            # Import and run all attack surface rules
+            from leetha.analysis.attack_surface import (
+                UnencryptedProtocolRule, IoTDefaultCredentialRiskRule,
+                MultiSubnetDeviceRule, LLMNRDetectedRule, NetBIOSDetectedRule,
+                MDNSDetectedRule, WPADDetectedRule, ARPActivityRule,
+                ARPDuplicateIPRule, GratuitousARPRule, DHCPStarvationRiskRule,
+                DHCPAnomalyRule, RouterAdvertisementRule, RoutingProtocolProbeRule,
+                TLSWeakVersionRule, HTTPWithoutTLSRule, UPnPDetectedRule,
+                InternalDNSQueriesRule, MultipleGatewaysRule, NDPSpoofingRiskRule,
+                MACDiversityRule, DiscoveryProtocolRule, MultipleDHCPServersRule,
+                DHCPv6ActivityRule, ICMPRedirectRiskRule, PhantomIPRule,
+                VLANHoppingDTPRule, VLANLeakageRule, STPManipulationRiskRule,
+                ServiceExploitEvaluator,
+            )
+
+            all_findings = []
+            passive_rules = [
+                UnencryptedProtocolRule(), IoTDefaultCredentialRiskRule(),
+                MultiSubnetDeviceRule(), LLMNRDetectedRule(), NetBIOSDetectedRule(),
+                MDNSDetectedRule(), WPADDetectedRule(), ARPActivityRule(),
+                ARPDuplicateIPRule(), GratuitousARPRule(), DHCPStarvationRiskRule(),
+                DHCPAnomalyRule(), RouterAdvertisementRule(), RoutingProtocolProbeRule(),
+                TLSWeakVersionRule(), HTTPWithoutTLSRule(), UPnPDetectedRule(),
+                InternalDNSQueriesRule(), MultipleGatewaysRule(), NDPSpoofingRiskRule(),
+                MACDiversityRule(), DiscoveryProtocolRule(), MultipleDHCPServersRule(),
+                DHCPv6ActivityRule(), ICMPRedirectRiskRule(), PhantomIPRule(),
+                VLANHoppingDTPRule(), VLANLeakageRule(), STPManipulationRiskRule(),
+            ]
+            for rule in passive_rules:
+                try:
+                    all_findings.extend(rule.evaluate(ctx))
+                except Exception:
+                    pass
+
+            svc_eval = ServiceExploitEvaluator()
             try:
-                verdicts = await app_instance.store.verdicts.find_all(limit=1000)
-                device_dicts = []
-                for v in verdicts:
-                    h = await app_instance.store.hosts.find_by_addr(v.hw_addr)
-                    device_dicts.append(_build_device_dict(v, h))
-                _attack_surface_cache = {
-                    "total_hosts": len(device_dicts),
-                    "services": [],
-                    "chains": [],
-                    "summary": {
-                        "total_hosts": len(device_dicts),
-                        "note": "Full attack surface analysis requires active probing data",
-                    },
-                }
+                all_findings.extend(svc_eval.evaluate(ctx))
             except Exception:
-                _attack_surface_cache = {"chains": [], "services": [], "summary": {}}
+                pass
+
+            chains = build_chains(all_findings, ctx)
+            summary = _build_summary(all_findings, chains)
+            _attack_surface_cache = {
+                "timestamp": datetime.now().isoformat(),
+                "findings": [f.to_dict() for f in all_findings],
+                "chains": [c.to_dict() for c in chains],
+                "summary": summary,
+            }
+        except Exception:
+            # Final fallback
+            _attack_surface_cache = {"findings": [], "chains": [], "summary": {}}
         _attack_surface_cache_ts = now
     return _attack_surface_cache
 
@@ -2038,14 +2290,21 @@ async def api_incident_detail(incident_id: str):
     # Evidence from verdict
     evidence = device_dict.get("raw_evidence", {})
 
-    # ARP history
-    arp_history = await app_instance.db.get_arp_history_for_mac(mac)
+    # ARP history from sightings
+    arp_history = await _get_arp_history_from_sightings(mac=mac)
 
-    # Fingerprint history
-    try:
-        fp_history = await app_instance.db.get_fingerprint_history(mac, limit=20)
-    except Exception:
-        fp_history = []
+    # Fingerprint history from verdict evidence chain
+    fp_history = []
+    if verdict and verdict.evidence_chain:
+        for ev in verdict.evidence_chain:
+            fp_history.append({
+                "timestamp": ev.observed_at.isoformat() if hasattr(ev.observed_at, 'isoformat') else str(ev.observed_at),
+                "device_type": ev.category,
+                "manufacturer": ev.vendor,
+                "os_family": ev.platform,
+                "hostname": ev.hostname,
+                "source": ev.source,
+            })
 
     # Recent sightings as observations
     try:
@@ -2230,10 +2489,8 @@ async def api_stats():
         device_count = await app_instance.store.hosts.count()
         alert_count = await app_instance.store.findings.count_active()
     except Exception:
-        # Fallback to old tables during transition
-        device_count = await app_instance.db.get_identity_count()
-        alerts = await app_instance.db.list_alerts(acknowledged=False)
-        alert_count = len(alerts)
+        device_count = 0
+        alert_count = 0
     capturing_count = len(app_instance.capture_engine.interfaces) if app_instance else 0
     return {
         "device_count": device_count,
@@ -2254,14 +2511,7 @@ async def api_device_type_stats():
         rows = await cursor.fetchall()
         return {"types": [{"type": r[0], "count": r[1]} for r in rows]}
     except Exception:
-        try:
-            # Fallback to old devices table
-            rows = await app_instance.db.execute_readonly_query(
-                "SELECT COALESCE(device_type, 'unknown') as dtype, COUNT(*) as cnt FROM devices GROUP BY dtype ORDER BY cnt DESC"
-            )
-            return {"types": [{"type": r[0], "count": r[1]} for r in rows.get("rows", [])]}
-        except Exception:
-            return {"types": []}
+        return {"types": []}
 
 
 @fastapi_app.get("/api/stats/activity")
@@ -2549,14 +2799,24 @@ async def api_topology():
                     if any(g["ip"].startswith(prefix) for g in gateways):
                         break  # Found a gateway for this subnet
 
-        # 3. ARP entries
+        # 3. ARP entries — derived from sightings
         arp_entries = []
         try:
-            arp_rows = await app_instance.db.execute_readonly_query(
-                "SELECT mac, ip, packet_count FROM arp_history"
+            arp_cursor = await app_instance.store.connection.execute(
+                "SELECT hw_addr, payload, COUNT(*) as cnt FROM sightings "
+                "WHERE source = 'arp' GROUP BY hw_addr, payload "
+                "ORDER BY cnt DESC LIMIT 1000"
             )
-            for r in arp_rows.get("rows", []):
-                arp_entries.append({"mac": r[0], "ip": r[1], "packet_count": r[2]})
+            arp_rows = await arp_cursor.fetchall()
+            seen_pairs = set()
+            for r in arp_rows:
+                payload = _json.loads(r[1]) if isinstance(r[1], str) else (r[1] or {})
+                ip = payload.get("src_ip") or payload.get("sender_ip") or ""
+                key = (r[0], ip)
+                if key in seen_pairs or not ip:
+                    continue
+                seen_pairs.add(key)
+                arp_entries.append({"mac": r[0], "ip": ip, "packet_count": r[2]})
         except Exception:
             pass
 
@@ -2974,7 +3234,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     for m in matches
                 ] if matches else [],
             })
-    except (WebSocketDisconnect, Exception):
+    except WebSocketDisconnect:
+        app_instance.unsubscribe(events)
+    except Exception:
+        logger.warning("WebSocket /ws error", exc_info=True)
         app_instance.unsubscribe(events)
 
 
@@ -3001,11 +3264,42 @@ async def websocket_console(websocket: WebSocket):
                 await websocket.send_json(event)
                 continue
 
-            # New pipeline events: {"type": "device_update", "mac": ..., "verdict": {...}}
-            # Console WS requires packet data — skip verdict-only events
-            if isinstance(event, dict) and event.get("type") == "device_update" and "verdict" in event and "packet" not in event:
+            # New pipeline events: {"type": "device_update", "mac": ..., "verdict": {...}, "packet": {...}}
+            # packet is a dict in new format — handle it directly
+            if isinstance(event, dict) and event.get("type") == "device_update" and "verdict" in event:
+                packet_info = event.get("packet")
+                if not packet_info:
+                    continue  # No packet data — skip for console
+                verdict_data = event.get("verdict", {})
+                # Build device dict from verdict
+                device_dict = {
+                    "manufacturer": verdict_data.get("vendor"),
+                    "device_type": verdict_data.get("category"),
+                    "os_family": verdict_data.get("platform"),
+                    "os_version": verdict_data.get("platform_version"),
+                    "hostname": verdict_data.get("hostname"),
+                    "confidence": verdict_data.get("certainty", 0),
+                }
+                # packet_info is already a dict with protocol, src_mac, src_ip, etc.
+                fields = packet_info.get("fields") or {}
+                await websocket.send_json({
+                    "protocol": packet_info.get("protocol"),
+                    "timestamp": packet_info.get("timestamp"),
+                    "src_mac": packet_info.get("src_mac"),
+                    "src_ip": packet_info.get("src_ip"),
+                    "dst_mac": None,
+                    "dst_ip": packet_info.get("dst_ip"),
+                    "interface": packet_info.get("interface"),
+                    "network": None,
+                    "data": {k: str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v
+                             for k, v in fields.items()},
+                    "device": device_dict,
+                    "matches": [],
+                    "alerts": [],
+                })
                 continue
 
+            # Legacy event format with packet objects
             device = event.get("device")
             packet = event.get("packet")
             matches = event.get("matches", [])
@@ -3065,7 +3359,10 @@ async def websocket_console(websocket: WebSocket):
                     for a in alerts_list
                 ] if alerts_list else [],
             })
-    except (WebSocketDisconnect, Exception):
+    except WebSocketDisconnect:
+        app_instance.unsubscribe(events)
+    except Exception:
+        logger.warning("WebSocket /ws/console error", exc_info=True)
         app_instance.unsubscribe(events)
 
 
