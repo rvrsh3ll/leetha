@@ -20,23 +20,15 @@ from concurrent.futures import ThreadPoolExecutor
 from leetha.capture.engine import CaptureEngine
 from leetha.capture.protocols import ParsedPacket
 from leetha.core.pipeline import Pipeline
-from leetha.fingerprint.engine import FingerprintEngine
 from leetha.pipeline import PacketRouter
 from leetha.store.database import Database
 from leetha.store.store import Store
-from leetha.store.models import Device, DeviceIdentity
 from leetha.alerts.engine import AlertEngine
 from leetha.config import get_config
 from leetha.probe.scheduler import ProbeScheduler
 from leetha.probe.engine import ProbeEngine
 from leetha.analysis.dhcp_anomaly import analyze_dhcp_options
 from leetha.analysis.spoofing import SpoofingDetector
-from leetha.fingerprint.mac_intel import (
-    is_randomized_mac,
-    build_correlation_fingerprint,
-    score_correlation,
-    CORRELATION_THRESHOLD,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +81,6 @@ class LeethaApp:
         self.db = Database(self.config.db_path)
         self.store = Store(self.config.db_path)
         self.pipeline: Pipeline | None = None  # initialized in start()
-        self.fingerprint_engine = FingerprintEngine()
         self.alert_engine = AlertEngine(self.db)
         self.spoofing_detector = SpoofingDetector(self.db)
 
@@ -245,7 +236,8 @@ class LeethaApp:
         import json as _json
         import time as _time
 
-        lookup = self.fingerprint_engine.lookup
+        from leetha.fingerprint.lookup import FingerprintLookup
+        lookup = self.pipeline._lookup if self.pipeline else FingerprintLookup()
         cache_dir = lookup._cache_dir
         t0 = _time.monotonic()
 
@@ -536,79 +528,4 @@ class LeethaApp:
             mac, self.pipeline._evidence_buffer[mac])
         await self.store.verdicts.upsert(verdict)
 
-    async def _assign_identity(self, device: Device, fingerprint: dict) -> None:
-        """Find or create an identity for this device.
-
-        For randomized MACs: score against existing identities and join if above
-        threshold. For real MACs: find existing identity or create one.
-        """
-        # Check if device already has an identity
-        if device.identity_id is not None:
-            # Update identity with latest data
-            identity = await self.db.get_identity(device.identity_id)
-            if identity:
-                self._update_identity_from_device(identity, device, fingerprint)
-                await self.db.upsert_identity(identity)
-            return
-
-        if device.is_randomized_mac:
-            # Try to correlate with existing identities
-            identities = await self.db.get_all_identities_with_fingerprints()
-            best_identity: DeviceIdentity | None = None
-            best_score = 0.0
-
-            for identity in identities:
-                s = score_correlation(fingerprint, identity.correlation_fingerprint)
-                if s > best_score:
-                    best_score = s
-                    best_identity = identity
-
-            if best_identity and best_score >= CORRELATION_THRESHOLD:
-                # Join existing identity
-                device.identity_id = best_identity.id
-                device.correlated_mac = best_identity.primary_mac
-                self._update_identity_from_device(best_identity, device, fingerprint)
-                await self.db.upsert_identity(best_identity)
-                logger.info(
-                    f"Correlated {device.mac} -> identity {best_identity.id} "
-                    f"(primary={best_identity.primary_mac}, score={best_score:.2f})"
-                )
-                return
-
-        # No correlation found (or real MAC) — create new identity
-        identity = DeviceIdentity(
-            primary_mac=device.mac,
-            manufacturer=device.manufacturer,
-            device_type=device.device_type,
-            os_family=device.os_family,
-            os_version=device.os_version,
-            hostname=device.hostname,
-            confidence=device.confidence,
-            correlation_fingerprint=fingerprint,
-        )
-        identity_id = await self.db.upsert_identity(identity)
-        device.identity_id = identity_id
-
-    @staticmethod
-    def _update_identity_from_device(
-        identity: DeviceIdentity, device: Device, fingerprint: dict
-    ) -> None:
-        """Merge device data into identity, keeping best values."""
-        identity.manufacturer = device.manufacturer or identity.manufacturer
-        if device.device_type and device.device_type != "Unknown":
-            identity.device_type = device.device_type
-        identity.os_family = device.os_family or identity.os_family
-        identity.os_version = device.os_version or identity.os_version
-        identity.hostname = _clean_hostname(device.hostname) or _clean_hostname(identity.hostname)
-        identity.confidence = max(device.confidence, identity.confidence)
-        identity.last_seen = device.last_seen
-
-        # Prefer real MAC as primary
-        if not is_randomized_mac(device.mac):
-            identity.primary_mac = device.mac
-
-        # Accumulate fingerprint signals
-        for key, value in fingerprint.items():
-            if value and key not in identity.correlation_fingerprint:
-                identity.correlation_fingerprint[key] = value
 
