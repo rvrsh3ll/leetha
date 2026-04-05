@@ -40,6 +40,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          mkdir -p src/leetha/ui/web/dist
+          echo '<html><body>Build frontend with: cd frontend && bun install && bun run build</body></html>' > src/leetha/ui/web/dist/index.html
           pip install -e .
           pip install pytest pytest-asyncio ruff httpx
 

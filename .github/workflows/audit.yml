@@ -19,6 +19,8 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pip-audit ruff
+          mkdir -p src/leetha/ui/web/dist
+          echo '<html></html>' > src/leetha/ui/web/dist/index.html
           pip install .
       - name: Dependency audit
         run: pip-audit

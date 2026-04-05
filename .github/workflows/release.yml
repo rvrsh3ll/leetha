@@ -9,13 +9,29 @@ permissions:
   packages: write
 
 jobs:
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: cd frontend && bun install --frozen-lockfile && bun run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/leetha/ui/web/dist/
+
   build-wheel:
+    needs: build-frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/leetha/ui/web/dist/
       - run: pip install build
       - run: python -m build
       - uses: actions/upload-artifact@v4
@@ -24,12 +40,17 @@ jobs:
           path: dist/*
 
   build-deb:
+    needs: build-frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/leetha/ui/web/dist/
       - run: |
           sudo apt-get update && sudo apt-get install -y ruby ruby-dev
           sudo gem install fpm
@@ -48,12 +69,17 @@ jobs:
           path: "*.deb"
 
   build-rpm:
+    needs: build-frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/leetha/ui/web/dist/
       - run: |
           sudo apt-get update && sudo apt-get install -y ruby ruby-dev rpm
           sudo gem install fpm
@@ -72,12 +98,17 @@ jobs:
           path: "*.rpm"
 
   build-macos:
+    needs: build-frontend
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/leetha/ui/web/dist/
       - run: |
           pip install . pyinstaller
           pyinstaller --onefile --name leetha src/leetha/cli.py
@@ -87,12 +118,17 @@ jobs:
           path: dist/leetha
 
   build-windows:
+    needs: build-frontend
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/leetha/ui/web/dist/
       - run: |
           pip install . pyinstaller
           pyinstaller --onefile --name leetha src/leetha/cli.py
@@ -102,7 +138,7 @@ jobs:
           path: dist/leetha.exe
 
   release:
-    needs: [build-wheel, build-deb, build-rpm, build-macos, build-windows]
+    needs: [build-frontend, build-wheel, build-deb, build-rpm, build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
