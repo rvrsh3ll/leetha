@@ -546,66 +546,19 @@ async def api_devices(
     raw: bool = False,
 ):
     """Paginated, filtered, sorted device list."""
-    # Read from new Verdict/Host tables (Store)
-    verdicts = await app_instance.store.verdicts.find_all(limit=10000)
-    result = []
-    for v in verdicts:
-        h = await app_instance.store.hosts.find_by_addr(v.hw_addr)
-        result.append(_build_device_dict(v, h))
-
-    # Apply search filter
-    if q:
-        q_lower = q.lower()
-        result = [
-            d for d in result
-            if q_lower in (d.get("mac") or "").lower()
-            or q_lower in (d.get("hostname") or "").lower()
-            or q_lower in (d.get("manufacturer") or "").lower()
-            or q_lower in (d.get("ip_v4") or "").lower()
-        ]
-
-    if manufacturer:
-        result = [d for d in result if d.get("manufacturer") == manufacturer]
-    if device_type:
-        result = [d for d in result if d.get("device_type") == device_type]
-    if os_family:
-        result = [d for d in result if d.get("os_family") == os_family]
-    if alert_status:
-        result = [d for d in result if d.get("alert_status") == alert_status]
-    if confidence_min is not None:
-        result = [d for d in result if (d.get("confidence") or 0) >= confidence_min]
-
-    # TODO: filter by interface — requires joining sightings table to check
-    # which MACs have been seen on a given interface. Low priority.
-
-    # Apply sorting
-    sort_key = sort or "last_seen"
-    reverse = (order == "desc") if order else True  # default descending
-
-    sort_map = {
-        "last_seen": lambda d: d.get("last_seen") or "",
-        "first_seen": lambda d: d.get("first_seen") or "",
-        "confidence": lambda d: d.get("confidence", 0),
-        "mac": lambda d: d.get("mac", ""),
-        "manufacturer": lambda d: d.get("manufacturer") or "",
-        "device_type": lambda d: d.get("device_type") or "",
-        "hostname": lambda d: d.get("hostname") or "",
-    }
-
-    if sort_key in sort_map:
-        result.sort(key=sort_map[sort_key], reverse=reverse)
+    devices, total = await app_instance.store.verdicts.list_devices(
+        page=page, per_page=per_page, sort=sort, order=order,
+        q=q, manufacturer=manufacturer, device_type=device_type,
+        os_family=os_family, alert_status=alert_status,
+        interface=interface, confidence_min=confidence_min,
+    )
 
     # Sanitize hostnames
-    for d in result:
+    for d in devices:
         d["hostname"] = _sanitize_hostname(d.get("hostname"))
 
-    total = len(result)
-    start = (page - 1) * per_page
-    end = start + per_page
-    page_devices = result[start:end]
-
     return {
-        "devices": page_devices,
+        "devices": devices,
         "total": total,
         "page": page,
         "per_page": per_page,
