@@ -47,3 +47,22 @@ def test_db_validate_throws_returns_503():
     resp = client.get("/api/test", headers={"Authorization": "Bearer lta_faketoken123"})
     assert resp.status_code == 503
     assert "initializing" in resp.json()["error"].lower()
+
+
+def test_health_exempt_when_db_none():
+    """The /health path must remain accessible even when DB is None."""
+
+    async def health_handler(request):
+        return JSONResponse({"status": "ok", "ready": False})
+
+    async def mw(request, call_next):
+        return await auth_middleware(
+            request, call_next, db=None, auth_enabled=True,
+        )
+
+    app = Starlette(routes=[Route("/health", health_handler)])
+    app.middleware("http")(mw)
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"

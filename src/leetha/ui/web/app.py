@@ -265,6 +265,13 @@ async def api_auth_login(request: Request):
     return {"valid": True, "role": token_info["role"]}
 
 
+@fastapi_app.get("/health")
+async def health():
+    """Readiness probe — always accessible, reports initialization state."""
+    ready = app_instance is not None and getattr(app_instance, "_running", False)
+    return {"status": "ok", "ready": ready}
+
+
 @fastapi_app.get("/api/auth/status")
 async def api_auth_status():
     """Return whether auth is enabled (public endpoint for frontend)."""
