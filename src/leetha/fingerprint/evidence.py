@@ -307,6 +307,13 @@ def _derive_device_role_from_os(os_name: str) -> str:
             return "server"
     if "bsd" in lowered or "solaris" in lowered:
         return "server"
+    # Mobile device class
+    if lowered in ("ios", "ipados", "android", "watchos", "wear os", "harmonyos"):
+        return "phone"
+    if lowered == "tvos":
+        return "media_player"
+    if lowered in ("fire os", "cast os", "roku os", "tizen", "webos"):
+        return "media_player"
     # Desktop / workstation class
     return "computer"
 

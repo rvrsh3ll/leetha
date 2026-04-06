@@ -297,7 +297,7 @@ def get_mdns_service_device_map() -> Dict[str, Dict[str, str]]:
         "_hap._tcp": {"manufacturer": "Apple", "category": "homekit"},
         "_homekit._tcp": {"manufacturer": "Apple", "category": "homekit"},
         "_amzn-wplay._tcp": {"device_type": "smart_speaker", "manufacturer": "Amazon"},
-        "_spotify-connect._tcp": {"device_type": "smart_speaker", "category": "audio"},
+        "_spotify-connect._tcp": {"device_type": "media_device", "category": "audio"},
         "_sonos._tcp": {"device_type": "smart_speaker", "manufacturer": "Sonos"},
         "_roku._tcp": {"device_type": "streaming_device", "manufacturer": "Roku"},
         "_hue._tcp": {"device_type": "smart_home", "manufacturer": "Philips"},

@@ -7,10 +7,10 @@
       "certainty": 40
     },
     "_raop._tcp": {
-      "category": "smart_speaker",
+      "category": "media_device",
       "vendor": null,
       "platform": null,
-      "certainty": 40
+      "certainty": 30
     },
     "_afpovertcp._tcp": {
       "category": "workstation",
@@ -211,10 +211,10 @@
       "certainty": 75
     },
     "_spotify-connect._tcp": {
-      "category": "smart_speaker",
+      "category": "media_device",
       "vendor": null,
       "platform": null,
-      "certainty": 80
+      "certainty": 30
     },
     "_sonos._tcp": {
       "category": "smart_speaker",
