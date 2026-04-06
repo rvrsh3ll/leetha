@@ -91,15 +91,18 @@ class AddrConflictRule(RuleBase):
     async def evaluate(self, host: Host, verdict: Verdict, store) -> Finding | None:
         if not host.ip_addr:
             return None
-        all_hosts = await store.hosts.find_all(limit=1000)
-        same_ip = [h for h in all_hosts
-                    if h.ip_addr == host.ip_addr and h.hw_addr != host.hw_addr]
-        if same_ip:
+        # Targeted query instead of full table scan
+        cursor = await store.connection.execute(
+            "SELECT hw_addr FROM hosts WHERE ip_addr = ? AND hw_addr != ?",
+            (host.ip_addr, host.hw_addr),
+        )
+        conflicts = await cursor.fetchall()
+        if conflicts:
             return Finding(
                 hw_addr=host.hw_addr,
                 rule=FindingRule.ADDR_CONFLICT,
                 severity=AlertSeverity.HIGH,
                 message=f"Address conflict: {host.ip_addr} claimed by "
-                        f"{host.hw_addr} and {same_ip[0].hw_addr}",
+                        f"{host.hw_addr} and {conflicts[0][0]}",
             )
         return None

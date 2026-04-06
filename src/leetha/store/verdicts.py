@@ -87,6 +87,7 @@ class VerdictRepository:
         select = """
             SELECT v.hw_addr, v.category, v.vendor, v.platform,
                    v.platform_version, v.model, v.hostname, v.certainty,
+                   v.evidence_chain,
                    h.ip_addr, h.ip_v6, h.discovered_at, h.last_active,
                    h.mac_randomized, h.real_hw_addr, h.disposition,
                    h.identity_id
@@ -173,6 +174,14 @@ class VerdictRepository:
                 "correlated_mac": row["real_hw_addr"],
                 "identity_id": row["identity_id"] if "identity_id" in row.keys() else None,
             })
+            chain_raw = row["evidence_chain"]
+            if chain_raw:
+                chain = json.loads(chain_raw) if isinstance(chain_raw, str) else chain_raw
+                devices[-1]["raw_evidence"] = {
+                    "source_count": len(set(e.get("source", "") for e in chain)),
+                }
+            else:
+                devices[-1]["raw_evidence"] = {}
 
         return devices, total
 

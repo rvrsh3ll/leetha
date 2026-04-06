@@ -11,11 +11,20 @@ class RandomizedAddrRule(RuleBase):
 
     async def evaluate(self, host: Host, verdict: Verdict, store) -> Finding | None:
         if host.mac_randomized:
-            msg = f"Randomized MAC detected: {host.hw_addr}"
+            hw_addr = host.hw_addr
+            # Deduplicate: skip if an unresolved finding already exists for this MAC+rule
+            cursor = await store.connection.execute(
+                "SELECT COUNT(*) FROM findings WHERE hw_addr = ? AND rule = ? AND resolved = 0",
+                (hw_addr, "randomized_addr"),
+            )
+            existing = (await cursor.fetchone())[0]
+            if existing > 0:
+                return None
+            msg = f"Randomized MAC detected: {hw_addr}"
             if host.real_hw_addr:
                 msg += f" (real: {host.real_hw_addr})"
             return Finding(
-                hw_addr=host.hw_addr,
+                hw_addr=hw_addr,
                 rule=FindingRule.RANDOMIZED_ADDR,
                 severity=AlertSeverity.INFO,
                 message=msg,

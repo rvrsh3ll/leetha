@@ -75,9 +75,17 @@ class TestIdentityShiftRuleRegistry:
 
 
 class TestRandomizedAddrRule:
+    @staticmethod
+    def _store_with_existing_count(count: int):
+        store = MagicMock()
+        cursor = AsyncMock()
+        cursor.fetchone = AsyncMock(return_value=(count,))
+        store.connection.execute = AsyncMock(return_value=cursor)
+        return store
+
     @pytest.mark.asyncio
     async def test_fires_for_randomized_mac(self):
-        store = MagicMock()
+        store = self._store_with_existing_count(0)
         rule = get_rule("randomized_addr")()
         host = Host(hw_addr="aa:bb:cc:dd:ee:ff", mac_randomized=True, real_hw_addr="11:22:33:44:55:66")
         verdict = Verdict(hw_addr="aa:bb:cc:dd:ee:ff")
@@ -85,6 +93,15 @@ class TestRandomizedAddrRule:
         assert result is not None
         assert result.rule == FR.RANDOMIZED_ADDR
         assert "11:22:33:44:55:66" in result.message
+
+    @pytest.mark.asyncio
+    async def test_skips_when_finding_already_exists(self):
+        store = self._store_with_existing_count(1)
+        rule = get_rule("randomized_addr")()
+        host = Host(hw_addr="aa:bb:cc:dd:ee:ff", mac_randomized=True, real_hw_addr="11:22:33:44:55:66")
+        verdict = Verdict(hw_addr="aa:bb:cc:dd:ee:ff")
+        result = await rule.evaluate(host, verdict, store)
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_no_fire_for_normal_mac(self):
@@ -99,6 +116,8 @@ class TestRandomizedAddrRule:
 class TestLowCertaintyRule:
     @pytest.mark.asyncio
     async def test_fires_for_low_certainty(self):
+        from leetha.rules import discovery
+        discovery._LOW_CERT_LAST_FIRED.clear()
         store = MagicMock()
         rule = get_rule("low_certainty")()
         host = Host(hw_addr="aa:bb:cc:dd:ee:ff", disposition="known")

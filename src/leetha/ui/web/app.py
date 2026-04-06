@@ -1615,7 +1615,7 @@ async def api_activity_stats():
     try:
         conn = app_instance.store.connection
         cursor = await conn.execute(
-            "SELECT strftime('%H', timestamp) as hour, COUNT(*) as cnt "
+            "SELECT strftime('%H', timestamp, 'localtime') as hour, COUNT(*) as cnt "
             "FROM sightings WHERE timestamp > datetime('now', '-24 hours') "
             "GROUP BY hour ORDER BY hour"
         )
@@ -1625,7 +1625,8 @@ async def api_activity_stats():
         for r in rows:
             try:
                 h = int(r[0])
-                counts[h] = r[1]
+                if 0 <= h < 24:
+                    counts[h] = r[1]
             except (ValueError, IndexError):
                 pass
         return {"hourly_counts": counts}
@@ -1718,7 +1719,7 @@ async def api_alert_trend():
     """Hourly alert counts over last 24 hours for trend line chart."""
     try:
         cursor = await app_instance.store.connection.execute(
-            "SELECT strftime('%H', timestamp) as hour, COUNT(*) as cnt "
+            "SELECT strftime('%H', timestamp, 'localtime') as hour, COUNT(*) as cnt "
             "FROM findings WHERE timestamp > datetime('now', '-24 hours') "
             "GROUP BY hour ORDER BY hour"
         )
@@ -1726,7 +1727,9 @@ async def api_alert_trend():
         counts = [0] * 24
         for r in rows:
             try:
-                counts[int(r[0])] = r[1]
+                h = int(r[0])
+                if 0 <= h < 24:
+                    counts[h] = r[1]
             except (ValueError, IndexError):
                 pass
         return {"hourly_counts": counts}
@@ -1739,7 +1742,7 @@ async def api_new_devices_timeline():
     """New devices discovered per hour over last 24h."""
     try:
         cursor = await app_instance.store.connection.execute(
-            "SELECT strftime('%H', discovered_at) as hour, COUNT(*) as cnt "
+            "SELECT strftime('%H', discovered_at, 'localtime') as hour, COUNT(*) as cnt "
             "FROM hosts WHERE discovered_at > datetime('now', '-24 hours') "
             "GROUP BY hour ORDER BY hour"
         )
@@ -1747,7 +1750,9 @@ async def api_new_devices_timeline():
         counts = [0] * 24
         for r in rows:
             try:
-                counts[int(r[0])] = r[1]
+                h = int(r[0])
+                if 0 <= h < 24:
+                    counts[h] = r[1]
             except (ValueError, IndexError):
                 pass
         return {"hourly_counts": counts}
