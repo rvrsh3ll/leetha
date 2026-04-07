@@ -1927,6 +1927,7 @@ async def api_topology():
 
         # 4. LLDP/CDP neighbors
         lldp_neighbors = []
+        lldp_rows = []
         try:
             lldp_cursor = await app_instance.store.connection.execute(
                 "SELECT hw_addr, payload FROM sightings WHERE source IN ('lldp', 'cdp')"
@@ -1947,6 +1948,40 @@ async def api_topology():
                     pass
         except Exception:
             pass
+
+        # 4b. Apply LLDP system_description model info to chassis_id devices
+        #     LLDP announces the chassis_id (management MAC) which may differ
+        #     from the sending port MAC.  Extract model from system_description
+        #     and apply it to the device matching the chassis_id.
+        for r in lldp_rows:
+            try:
+                raw = _json.loads(r[1]) if isinstance(r[1], str) else (r[1] or {})
+                chassis_mac = raw.get("chassis_id")
+                sys_desc = raw.get("system_description", "")
+                sys_name = raw.get("system_name")
+                if chassis_mac and sys_desc:
+                    for d in devices:
+                        if d["mac"] == chassis_mac:
+                            model_str = sys_desc.split(",")[0].strip()
+                            d["model"] = model_str
+                            if sys_name and not d.get("hostname"):
+                                d["hostname"] = sys_name
+                            model_lower = model_str.lower()
+                            if any(model_lower.startswith(p) for p in (
+                                "us-", "usw-", "us8", "us16", "us24", "us48",
+                            )):
+                                d["device_type"] = "switch"
+                            elif any(model_lower.startswith(p) for p in (
+                                "uap", "u6", "u7", "nanohd", "flexhd", "beaconhd",
+                            )):
+                                d["device_type"] = "access_point"
+                            elif any(model_lower.startswith(p) for p in (
+                                "udm", "ucg", "udr", "usg", "edgerouter",
+                            )):
+                                d["device_type"] = "router"
+                            break
+            except Exception:
+                pass
 
         result = build_topology_graph(
             devices=devices,

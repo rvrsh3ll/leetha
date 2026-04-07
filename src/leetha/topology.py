@@ -1747,8 +1747,16 @@ def _subnet_for_ip(ip: str | None) -> str | None:
         return None
 
 
-def _clean_hostname(hostname: str | None, device_type: str) -> str | None:
+def _clean_hostname(hostname: str | None, device_type: str,
+                     manufacturer: str | None = None,
+                     model: str | None = None) -> str | None:
     if not hostname:
+        # For Ubiquiti network_devices with no hostname, show model or a
+        # disambiguating label so they don't all appear identical.
+        if device_type == "network_device" and manufacturer and "ubiquiti" in manufacturer.lower():
+            if model:
+                return model
+            return "Ubiquiti (AP/SW?)"
         return None
     hn = hostname.strip()
     if hn.count(".") >= 2 and not hn.endswith(".local"):
@@ -1819,6 +1827,7 @@ def build_topology_graph(
         if device_type == "network_device":
             model = (d.get("model") or d.get("hostname") or "").lower()
             has_lldp = mac in {n.get("device_mac") for n in lldp_neighbors}
+            has_lldp_chassis = mac in {n.get("neighbor_mac") for n in lldp_neighbors}
             has_cdp = mac in {n.get("device_mac") for n in lldp_neighbors if n.get("port_id")}
             # Check for AP indicators in model/hostname
             ap_keywords = ("uap", "u6", "u7", "ap ", "access point", "nanostation",
@@ -1827,14 +1836,29 @@ def build_topology_graph(
                            "basestation", "-ap-", "eap", "wap", "aruba ap", "ruckus")
             switch_keywords = ("usw", "switch", "us-", "us8", "us16", "us24", "us48",
                                "unifi switch", "catalyst", "prosafe", "gs1", "gs3")
+            router_keywords = ("udm", "ucg", "udr", "usg", "edgerouter",
+                               "dream machine", "cloud gateway", "security gateway")
             if any(kw in model for kw in ap_keywords):
                 device_type = "access_point"
             elif any(kw in model for kw in switch_keywords):
                 device_type = "switch"
-            elif has_lldp and not any(kw in model for kw in switch_keywords):
-                # LLDP-capable "network_device" without switch keywords — likely AP
-                # (switches usually have switch-specific model names)
-                pass  # keep as network_device, let other signals decide
+            elif any(kw in model for kw in router_keywords):
+                device_type = "router"
+            elif has_lldp or has_lldp_chassis:
+                # LLDP-capable network_device — check if on same subnet as known APs
+                dev_subnet = _subnet_for_ip(d.get("ip_v4"))
+                ap_subnets = set()
+                switch_subnets = set()
+                for other in devices:
+                    otype = _normalize_device_type(other.get("device_type"))
+                    osub = _subnet_for_ip(other.get("ip_v4"))
+                    if otype == "access_point" and osub:
+                        ap_subnets.add(osub)
+                    elif otype == "switch" and osub:
+                        switch_subnets.add(osub)
+                if dev_subnet and dev_subnet in ap_subnets:
+                    device_type = "access_point"
+                # Otherwise keep as network_device
 
         is_gw = mac in gateway_macs
         is_infra = device_type in _INFRA_TYPES and not is_gw
@@ -1856,8 +1880,10 @@ def build_topology_graph(
         node = {
             "id": mac,
             "type": device_type,
-            "hostname": _clean_hostname(d.get("hostname"), device_type),
+            "hostname": _clean_hostname(d.get("hostname"), device_type,
+                                        d.get("manufacturer"), d.get("model")),
             "ip": d.get("ip_v4"),
+            "model": d.get("model"),
             "manufacturer": d.get("manufacturer"),
             "confidence": d.get("confidence", 0),
             "subnet": subnet,

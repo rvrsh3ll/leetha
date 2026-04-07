@@ -58,6 +58,7 @@ class InfrastructureProcessor(Processor):
 
         platform = None
         vendor = None
+        model = None
         desc_lower = system_description.lower() if system_description else ""
         if "cisco ios" in desc_lower or "cisco nx-os" in desc_lower:
             vendor = "Cisco"
@@ -81,12 +82,37 @@ class InfrastructureProcessor(Processor):
             vendor = "MikroTik"
             platform = "RouterOS"
 
+        # Extract UniFi model from system_description (e.g. "US-8-150W, 7.2.123, Linux 3.6.5")
+        if system_description:
+            model_str = system_description.split(",")[0].strip()
+            model_lower = model_str.lower()
+            if re.match(r'^(us[w]?-|us8|us16|us24|us48)', model_lower):
+                model = model_str
+                vendor = "Ubiquiti"
+                device_type = "switch"
+            elif re.match(r'^(uap|u6|u7|nanohd|flexhd|beaconhd)', model_lower):
+                model = model_str
+                vendor = "Ubiquiti"
+                device_type = "access_point"
+            elif re.match(r'^(udm|ucg|udr|usg|edgerouter)', model_lower):
+                model = model_str
+                vendor = "Ubiquiti"
+                device_type = "router"
+
+        # Fall back to system_name as model if no model extracted from description
+        if not model:
+            model = system_name or None
+
+        # Use system_name as hostname evidence
+        hostname = system_name if system_name else None
+
         return [Evidence(
             source="lldp", method="exact", certainty=0.90,
             category=device_type,
             vendor=vendor,
             platform=platform,
-            model=system_name or None,
+            model=model,
+            hostname=hostname,
             raw={
                 "system_name": system_name,
                 "system_description": system_description,
