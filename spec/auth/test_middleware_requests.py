@@ -2,6 +2,8 @@
 from unittest.mock import AsyncMock
 from starlette.testclient import TestClient
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
@@ -16,16 +18,15 @@ def _make_app(*, db=None, auth_enabled=True):
         role = request.scope.get("auth_role", "none")
         return JSONResponse({"role": role})
 
-    async def middleware(request: Request, call_next):
+    async def dispatch(request: Request, call_next):
         return await auth_middleware(
             request, call_next, db=db, auth_enabled=auth_enabled,
         )
 
     app = Starlette(
         routes=[Route("/api/test", protected)],
-        middleware=[],
+        middleware=[Middleware(BaseHTTPMiddleware, dispatch=dispatch)],
     )
-    app.middleware("http")(middleware)
     return app
 
 
@@ -55,13 +56,15 @@ def test_health_exempt_when_db_none():
     async def health_handler(request):
         return JSONResponse({"status": "ok", "ready": False})
 
-    async def mw(request, call_next):
+    async def dispatch(request, call_next):
         return await auth_middleware(
             request, call_next, db=None, auth_enabled=True,
         )
 
-    app = Starlette(routes=[Route("/health", health_handler)])
-    app.middleware("http")(mw)
+    app = Starlette(
+        routes=[Route("/health", health_handler)],
+        middleware=[Middleware(BaseHTTPMiddleware, dispatch=dispatch)],
+    )
     client = TestClient(app, raise_server_exceptions=False)
     resp = client.get("/health")
     assert resp.status_code == 200
@@ -110,21 +113,25 @@ def test_analyst_on_admin_route_returns_403():
     async def admin_endpoint(request):
         return JSONResponse({"ok": True})
 
-    async def auth_mw(request, call_next):
+    async def auth_dispatch(request, call_next):
         return await auth_middleware(
             request, call_next, db=mock_db, auth_enabled=True,
         )
 
-    async def role_mw(request, call_next):
+    async def role_dispatch(request, call_next):
         role = request.scope.get("auth_role", "anonymous")
         if request.url.path.startswith("/api/") and requires_admin(request.method, request.url.path) and role != "admin":
             return JSONResponse(status_code=403, content={"error": "Admin access required."})
         return await call_next(request)
 
-    app = Starlette(routes=[Route("/api/auth/tokens", admin_endpoint)])
-    # Role middleware runs first (outermost), then auth
-    app.middleware("http")(auth_mw)
-    app.middleware("http")(role_mw)
+    app = Starlette(
+        routes=[Route("/api/auth/tokens", admin_endpoint)],
+        middleware=[
+            # Outermost runs first: role check, then auth
+            Middleware(BaseHTTPMiddleware, dispatch=role_dispatch),
+            Middleware(BaseHTTPMiddleware, dispatch=auth_dispatch),
+        ],
+    )
     client = TestClient(app, raise_server_exceptions=False)
     resp = client.get(
         "/api/auth/tokens",

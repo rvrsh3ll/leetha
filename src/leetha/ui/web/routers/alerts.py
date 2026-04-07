@@ -20,7 +20,7 @@ async def api_alerts():
 async def export_alerts(format: str = "csv"):
     """Export alerts as CSV or JSON."""
     from fastapi import HTTPException
-    from fastapi.responses import Response, JSONResponse
+    from fastapi.responses import Response
     from leetha.ui.web.app import app_instance, _finding_to_alert_dict
     import csv
     import io
