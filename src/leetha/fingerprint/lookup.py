@@ -5,7 +5,7 @@ Provides a unified interface for correlating observed network artefacts
 (MAC prefixes, TCP/IP stack behaviour, service banners, DHCP options,
 mDNS advertisements, SSDP responses, TLS fingerprints, etc.) against
 known device signatures.  All matching is synchronous and in-memory,
-backed by optional JSON data files under ``~/.cache/leetha/``.
+backed by optional JSON data files under ``~/.leetha/cache/``.
 """
 
 from __future__ import annotations
@@ -356,7 +356,7 @@ class SignatureMatcher:
         data_root:
             Directory that holds JSON data files.  When *None* the path
             is read from ``leetha.config.get_config().cache_dir``
-            (typically ``~/.cache/leetha/``).
+            (typically ``~/.leetha/cache/``).
         """
         if data_root is not None:
             self._data_dir = Path(data_root)
@@ -484,7 +484,7 @@ class SignatureMatcher:
                         category=info.get("category"),
                         raw_data={
                             "source_db": "IEEE OUI Master Database",
-                            "source_file": "~/.cache/leetha/ieee_oui/master_oui.csv",
+                            "source_file": "~/.leetha/cache/ieee_oui/master_oui.csv",
                             "matched_key": f"OUI prefix {pfx}",
                         },
                     ))
@@ -527,7 +527,7 @@ class SignatureMatcher:
             manufacturer=vendor_name,
             raw_data={
                 "source_db": "Huginn-Muninn MAC Vendors",
-                "source_file": "~/.cache/leetha/huginn_mac_vendors/",
+                "source_file": "~/.leetha/cache/huginn_mac_vendors/",
                 "matched_key": f"MAC prefix {short}",
                 "huginn_device_id": row.get("device_id"),
             },
@@ -566,7 +566,7 @@ class SignatureMatcher:
                     device_type=rec.get("device_type"),
                     raw_data={
                         "source_db": "p0f TCP/IP Fingerprints",
-                        "source_file": "~/.cache/leetha/p0f/p0f.fp",
+                        "source_file": "~/.leetha/cache/p0f/p0f.fp",
                         "matched_key": f"TCP signature {sig[:40]}",
                         "signature": rec.get("signature"),
                         "label": rec.get("label"),
@@ -964,7 +964,7 @@ class SignatureMatcher:
             confidence=0.82,
             raw_data={
                 "source_db": "Huginn-Muninn DHCP Signatures",
-                "source_file": "~/.cache/leetha/huginn_dhcp/dhcp_signature.json",
+                "source_file": "~/.leetha/cache/huginn_dhcp/dhcp_signature.json",
                 "matched_key": f"DHCP Option 55: {opt55[:60]}",
                 "huginn_fingerprint_id": found_id,
             },

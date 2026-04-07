@@ -1,6 +1,6 @@
 # Fingerprint Sources
 
-Leetha's device identification accuracy depends on 12 community-maintained reference databases plus built-in JSON pattern files. The `PatternLoader` reads synced databases from the cache directory (`~/.cache/leetha/`) at runtime, loading each source on demand when a lookup is first requested.
+Leetha's device identification accuracy depends on 12 community-maintained reference databases plus built-in JSON pattern files. The `PatternLoader` reads synced databases from the cache directory (`~/.leetha/cache/`) at runtime, loading each source on demand when a lookup is first requested.
 
 ---
 

@@ -2496,21 +2496,16 @@ def run_web(interfaces: list | None = None, host: str = "0.0.0.0", port: int = 8
             try:
                 loop.run_until_complete(app_instance.start())
                 logger.info("Backend fully initialized — all services ready")
-                # Bootstrap admin token if auth is enabled and no admin token exists
+                # Show admin token on startup so user can log in
                 if _auth_enabled:
-                    async def _bootstrap_admin():
-                        count = await app_instance.db.count_active_admin_tokens()
-                        if count == 0:
-                            from leetha.auth.tokens import generate_token as _gen, hash_token as _hash, save_admin_token
-                            from rich.console import Console as RichConsole
-                            raw = _gen()
-                            await app_instance.db.create_auth_token(_hash(raw), role="admin", label="auto-generated")
-                            save_admin_token(raw)
-                            rc = RichConsole()
-                            rc.print("\n[bold green]Admin token generated:[/bold green]")
-                            rc.print(f"[bold yellow]{raw}[/bold yellow]")
-                            rc.print("[dim]Saved to ~/.leetha/admin-token[/dim]\n")
-                    loop.run_until_complete(_bootstrap_admin())
+                    from leetha.auth.tokens import load_admin_token
+                    from rich.console import Console as RichConsole
+                    raw = load_admin_token()
+                    if raw:
+                        rc = RichConsole()
+                        rc.print("\n[bold green]Admin token:[/bold green]")
+                        rc.print(f"[bold yellow]{raw}[/bold yellow]")
+                        rc.print("[dim]Saved at ~/.leetha/admin-token[/dim]\n")
                 # Keep the event loop running so background tasks continue
                 loop.run_forever()
             except Exception as e:

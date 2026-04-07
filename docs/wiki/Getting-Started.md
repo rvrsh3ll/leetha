@@ -55,7 +55,7 @@ Leetha ships with built-in patterns under `patterns/data/`, but accuracy improve
 leetha sync
 ```
 
-This pulls 12 sources (~880 MB) into `~/.cache/leetha/`. View what is available and its freshness:
+This pulls 12 sources (~880 MB) into `~/.leetha/cache/`. View what is available and its freshness:
 
 ```bash
 leetha sync --list
@@ -169,7 +169,7 @@ leetha interfaces remove enp3s0       # forget it
 leetha interfaces show enp3s0         # display adapter details
 ```
 
-Preferences are written to `~/.local/share/leetha/interfaces.json`.
+Preferences are written to `~/.leetha/interfaces.json`.
 
 ---
 
@@ -192,8 +192,8 @@ Leetha uses two filesystem locations:
 
 | Location | Default Path | Environment Variable | Purpose |
 |----------|-------------|----------------------|---------|
-| Cache directory | `~/.cache/leetha/` | `LEETHA_CACHE_DIR` | Downloaded fingerprint databases |
-| Data directory | `~/.local/share/leetha/` | `LEETHA_DATA_DIR` | SQLite Store, custom patterns, overrides |
+| Data directory | `~/.leetha/` | `LEETHA_DATA_DIR` | SQLite store, tokens, settings, custom patterns, overrides |
+| Cache directory | `~/.leetha/cache/` | `LEETHA_CACHE_DIR` | Downloaded fingerprint databases |
 
 ### Adjustable Settings
 

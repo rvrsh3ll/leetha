@@ -13142,7 +13142,7 @@ def load_oui_data(cache_dir=None) -> Dict[str, Dict]:
        providing broad manufacturer coverage as a fallback).
 
     Args:
-        cache_dir: Optional path to JSON cache directory (``~/.cache/leetha/``).
+        cache_dir: Optional path to JSON cache directory (``~/.leetha/cache/``).
 
     Returns:
         Dict mapping MAC prefix -> {"manufacturer": str, "device_type": str, ...}

@@ -15,12 +15,12 @@ from leetha.capture.interfaces import InterfaceConfig
 class LeethaConfig:
     """Application configuration."""
 
-    # Data directories
-    cache_dir: Path = field(default_factory=lambda: Path(
-        os.environ.get("LEETHA_CACHE_DIR", _real_home() / ".cache" / "leetha")
-    ))
+    # Data directories — everything lives under ~/.leetha by default
     data_dir: Path = field(default_factory=lambda: Path(
-        os.environ.get("LEETHA_DATA_DIR", _real_home() / ".local" / "share" / "leetha")
+        os.environ.get("LEETHA_DATA_DIR", _real_home() / ".leetha")
+    ))
+    cache_dir: Path = field(default_factory=lambda: Path(
+        os.environ.get("LEETHA_CACHE_DIR", _real_home() / ".leetha" / "cache")
     ))
 
     # Database
@@ -57,19 +57,13 @@ class LeethaConfig:
 
     def __post_init__(self):
         self.db_path = self.data_dir / "leetha.db"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         # When running under sudo, fix ownership so the real user
         # owns these directories and the DB file.
         from leetha.platform import fix_ownership
-        fix_ownership(self.cache_dir)
         fix_ownership(self.data_dir)
-        # Fix parent dirs too (.cache, .local, .local/share)
-        for d in (self.cache_dir, self.data_dir):
-            for parent in d.parents:
-                if parent == Path.home() or parent == Path("/"):
-                    break
-                fix_ownership(parent)
+        fix_ownership(self.cache_dir)
 
 
 # Global config instance

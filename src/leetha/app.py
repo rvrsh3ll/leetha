@@ -683,18 +683,31 @@ class LeethaApp:
             return
 
     async def _restore_admin_token(self):
-        """Re-import admin token from file if DB has none (e.g., after DB reset)."""
+        """Ensure an admin token always exists — restore from file or generate new."""
         try:
             count = await self.db.count_active_admin_tokens()
             if count > 0:
                 return  # DB already has tokens
-            from leetha.auth.tokens import load_admin_token, hash_token
+
+            from leetha.auth.tokens import (
+                load_admin_token, save_admin_token,
+                generate_token, hash_token,
+            )
+
             raw = load_admin_token()
-            if not raw:
-                return  # No token file either
+            if raw:
+                # Token file exists but DB is empty — re-import it
+                await self.db.create_auth_token(
+                    hash_token(raw), role="admin", label="restored-from-file")
+                logger.info("Restored admin token from ~/.leetha/admin-token")
+                return
+
+            # Neither DB nor file has a token — generate a fresh one
+            raw = generate_token()
             await self.db.create_auth_token(
-                hash_token(raw), role="admin", label="restored-from-file")
-            logger.info("Restored admin token from ~/.leetha/admin-token")
+                hash_token(raw), role="admin", label="auto-generated")
+            save_admin_token(raw)
+            logger.info("Generated new admin token → ~/.leetha/admin-token")
         except Exception:
             logger.debug("Admin token restore failed", exc_info=True)
 

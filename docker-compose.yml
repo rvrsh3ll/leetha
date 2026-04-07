@@ -16,9 +16,9 @@ services:
       - NET_ADMIN        # Required for interface enumeration
     network_mode: host    # Direct access to host network interfaces
     volumes:
-      - app-storage:/home/appuser/.local/share/leetha
+      - app-storage:/home/appuser/.leetha
     environment:
-      - LEETHA_DATA_DIR=/home/appuser/.local/share/leetha
+      - LEETHA_DATA_DIR=/home/appuser/.leetha
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/api/stats"]

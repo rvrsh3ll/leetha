@@ -164,7 +164,7 @@ docker run -d \
   --name leetha \
   --net=host \
   --cap-add=NET_RAW \
-  -v leetha-data:/home/appuser/.local/share/leetha \
+  -v leetha-data:/home/appuser/.leetha \
   ghcr.io/tjnull/leetha:latest --web
 ```
 

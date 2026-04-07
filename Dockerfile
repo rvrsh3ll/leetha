@@ -37,13 +37,13 @@ RUN pip install --no-cache-dir /tmp/*.whl && rm -f /tmp/*.whl
 
 # Non-root user for safety
 RUN useradd --system --create-home --shell /usr/sbin/nologin appuser \
-    && mkdir -p /home/appuser/.local/share/leetha /home/appuser/.leetha \
-    && chown -R appuser:appuser /home/appuser/.local /home/appuser/.leetha
+    && mkdir -p /home/appuser/.leetha/cache \
+    && chown -R appuser:appuser /home/appuser/.leetha
 USER appuser
 
-# Persistent storage for fingerprint databases and SQLite
-VOLUME /home/appuser/.local/share/leetha
-ENV LEETHA_DATA_DIR=/home/appuser/.local/share/leetha
+# Persistent storage — DB, tokens, cache, settings all under ~/.leetha
+VOLUME /home/appuser/.leetha
+ENV LEETHA_DATA_DIR=/home/appuser/.leetha
 
 EXPOSE 8080
 
