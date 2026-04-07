@@ -47,12 +47,18 @@ _BPF_RADIUS = "udp port 1812 or udp port 1813"
 _BPF_EAP = "ether proto 0x888e"
 _BPF_IGMP = "igmp"
 _BPF_UPNP = "tcp port 2869 or tcp port 5000"
+_BPF_DNP3 = "tcp port 20000"
+_BPF_S7COMM = "tcp port 102"
+_BPF_OPCUA = "tcp port 4840 or tcp port 4843"
+_BPF_GOOSE = "ether proto 0x88b8"
+_BPF_PROFINET = "ether proto 0x8892"
 
 _FULL_BPF = " or ".join([
     _BPF_L2_PROTOS, _BPF_EAP, _BPF_SNMP, _BPF_TCP_SYN, _BPF_TLS, _BPF_HTTP,
     _BPF_AI_PORTS, _BPF_BANNER_PORTS, _BPF_DHCP4, _BPF_DHCP6, _BPF_MDNS, _BPF_SSDP,
     _BPF_NAME_SVC, _BPF_DNS, _BPF_ICMP6, _BPF_IGMP, _BPF_ARP, _BPF_IOT_SCADA,
     _BPF_STUN, _BPF_RADIUS, _BPF_UPNP,
+    _BPF_DNP3, _BPF_S7COMM, _BPF_OPCUA, _BPF_GOOSE, _BPF_PROFINET,
 ])
 
 
@@ -67,7 +73,7 @@ def _bpf_for_mode(mode: str) -> str:
         return "ip or ip6"
     # Broad filter for ethernet/tap/bridge — capture everything useful
     # including broadcast traffic from other VLANs visible on the wire
-    return "ip or ip6 or arp or " + _BPF_L2_PROTOS + " or ether proto 0x888e or igmp"
+    return "ip or ip6 or arp or " + _BPF_L2_PROTOS + " or ether proto 0x888e or igmp or ether proto 0x88b8 or ether proto 0x8892"
 
 
 # ---------------------------------------------------------------------------

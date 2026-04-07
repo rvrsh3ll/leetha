@@ -66,6 +66,11 @@ _SOURCE_WEIGHTS: dict[str, float] = {
     "coap": 0.50,
     "mqtt": 0.55,
     "enip": 0.65,
+    "dnp3": 0.75,
+    "s7comm": 0.80,
+    "opcua": 0.75,
+    "goose": 0.85,
+    "profinet": 0.80,
     # Other
     "ip_observed_ttl": 0.35,
     "ip_observed_port": 0.30,

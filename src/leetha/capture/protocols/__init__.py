@@ -33,6 +33,11 @@ from leetha.capture.protocols.iot_scada import parse_bacnet as _new_parse_bacnet
 from leetha.capture.protocols.iot_scada import parse_coap as _new_parse_coap
 from leetha.capture.protocols.iot_scada import parse_mqtt as _new_parse_mqtt
 from leetha.capture.protocols.iot_scada import parse_enip as _new_parse_enip
+from leetha.capture.protocols.iot_scada import parse_dnp3 as _new_parse_dnp3
+from leetha.capture.protocols.iot_scada import parse_s7comm as _new_parse_s7comm
+from leetha.capture.protocols.iot_scada import parse_opcua as _new_parse_opcua
+from leetha.capture.protocols.iot_scada import parse_goose as _new_parse_goose
+from leetha.capture.protocols.iot_scada import parse_profinet as _new_parse_profinet
 from leetha.capture.protocols.tcp_syn import parse_tcp_syn as _new_parse_tcp_syn
 from leetha.capture.protocols.banner import parse_service_banner as _new_parse_service_banner
 from leetha.capture.protocols.igmp import parse_igmp as _new_parse_igmp
@@ -46,6 +51,7 @@ from leetha.capture.protocols.discovery import parse_upnp as _new_parse_upnp
 PARSER_CHAIN = [
     _new_parse_lldp, _new_parse_cdp, _new_parse_stp,
     _new_parse_eap,
+    _new_parse_goose, _new_parse_profinet,  # L2 OT protocols
     _new_parse_arp,
     _new_parse_dhcp_server, _new_parse_dhcpv4, _new_parse_dhcpv6,
     _new_parse_tcp_syn, _new_parse_tls_client_hello, _new_parse_quic,
@@ -59,6 +65,7 @@ PARSER_CHAIN = [
     _new_parse_ntp,
     _new_parse_modbus, _new_parse_bacnet, _new_parse_coap,
     _new_parse_mqtt, _new_parse_enip,
+    _new_parse_dnp3, _new_parse_s7comm, _new_parse_opcua,  # TCP OT protocols
     _new_parse_stun, _new_parse_radius, _new_parse_upnp,
     _new_parse_service_banner,
     _new_parse_ip_observed,

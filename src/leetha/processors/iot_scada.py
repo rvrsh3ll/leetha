@@ -20,7 +20,7 @@ _MQTT_CLIENT_PATTERNS: list[tuple[str, str | None, str]] = [
 ]
 
 
-@register_processor("modbus", "bacnet", "coap", "mqtt", "enip")
+@register_processor("modbus", "bacnet", "coap", "mqtt", "enip", "dnp3", "s7comm", "opcua", "goose", "profinet")
 class IotScadaProcessor(Processor):
     """Handles ICS/SCADA and IoT protocols.
 
@@ -40,6 +40,16 @@ class IotScadaProcessor(Processor):
             return self._analyze_mqtt(packet)
         elif protocol == "enip":
             return self._analyze_enip(packet)
+        elif protocol == "dnp3":
+            return self._analyze_dnp3(packet)
+        elif protocol == "s7comm":
+            return self._analyze_s7comm(packet)
+        elif protocol == "opcua":
+            return self._analyze_opcua(packet)
+        elif protocol == "goose":
+            return self._analyze_goose(packet)
+        elif protocol == "profinet":
+            return self._analyze_profinet(packet)
         return []
 
     def _analyze_modbus(self, packet: CapturedPacket) -> list[Evidence]:
@@ -112,3 +122,83 @@ class IotScadaProcessor(Processor):
             raw={"product_name": product_name, "vendor_id": vendor_id,
                  "device_type": device_type},
         )]
+
+    def _analyze_dnp3(self, packet: CapturedPacket) -> list[Evidence]:
+        """DNP3 — SCADA RTU/outstation identification."""
+        func_name = packet.get("func_name", "")
+        is_server = packet.get("is_server", False)
+        category = "rtu" if is_server else "scada_server"
+        return [Evidence(
+            source="dnp3", method="exact", certainty=0.75,
+            category=category,
+            raw={"func": func_name, "src_addr": packet.get("src_addr"),
+                 "dst_addr": packet.get("dst_addr")},
+        )]
+
+    def _analyze_s7comm(self, packet: CapturedPacket) -> list[Evidence]:
+        """S7comm — Siemens PLC identification."""
+        s7_pdu_name = packet.get("s7_pdu_name")
+        s7_function_name = packet.get("s7_function_name")
+        is_server = packet.get("is_server", False)
+        evidence = [Evidence(
+            source="s7comm", method="exact", certainty=0.80,
+            vendor="Siemens",
+            category="plc" if is_server else "scada_server",
+            raw={"pdu": s7_pdu_name, "function": s7_function_name},
+        )]
+        return evidence
+
+    def _analyze_opcua(self, packet: CapturedPacket) -> list[Evidence]:
+        """OPC UA — industrial server/client."""
+        msg_type = packet.get("msg_type", "")
+        type_name = packet.get("type_name", "")
+        is_server = packet.get("is_server", False)
+        endpoint_url = packet.get("endpoint_url")
+        evidence = [Evidence(
+            source="opcua", method="exact", certainty=0.75,
+            category="scada_server" if is_server else "hmi",
+            raw={"msg_type": msg_type, "type_name": type_name,
+                 "endpoint_url": endpoint_url},
+        )]
+        return evidence
+
+    def _analyze_goose(self, packet: CapturedPacket) -> list[Evidence]:
+        """IEC 61850 GOOSE — substation automation device."""
+        gocb_ref = packet.get("gocb_ref")
+        go_id = packet.get("go_id")
+        evidence = [Evidence(
+            source="goose", method="exact", certainty=0.85,
+            category="ics_device",
+            raw={"gocb_ref": gocb_ref, "go_id": go_id,
+                 "appid": packet.get("appid")},
+        )]
+        # Extract hostname from goID if present
+        if go_id:
+            evidence[0].hostname = go_id
+        return evidence
+
+    def _analyze_profinet(self, packet: CapturedPacket) -> list[Evidence]:
+        """PROFINET — industrial Ethernet device."""
+        frame_type = packet.get("frame_type", "")
+        vendor_name = packet.get("vendor_name")
+        station_name = packet.get("station_name")
+        device_role = packet.get("device_role", [])
+
+        category = "plc"
+        if "io_controller" in device_role:
+            category = "plc"
+        elif "io_device" in device_role:
+            category = "ics_device"
+        elif "io_supervisor" in device_role:
+            category = "hmi"
+
+        evidence = [Evidence(
+            source="profinet", method="exact", certainty=0.80,
+            vendor=vendor_name,
+            category=category,
+            raw={"frame_type": frame_type, "station_name": station_name,
+                 "device_role": device_role},
+        )]
+        if station_name:
+            evidence[0].hostname = station_name
+        return evidence
