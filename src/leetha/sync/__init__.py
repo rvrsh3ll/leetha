@@ -298,9 +298,13 @@ async def sync_source_with_progress(source_name: str) -> AsyncGenerator[dict, No
             yield {"event": "error", "source": src.name, "error": str(e)}
         return
 
-    # Single-file sources
-    raw_data: bytes | None = None
-    async for progress in download_with_progress(src.url):
+    # Single-file sources — stream large downloads to a temp file to
+    # avoid holding hundreds of MB as bytes + decoded string in memory.
+    import tempfile as _tf
+
+    tmp_file = _tf.SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b")
+    download_size = 0
+    async for progress in download_with_progress(src.url, dest_file=tmp_file):
         if progress["stage"] == "connecting":
             yield {"event": "downloading", "source": src.name, "downloaded": 0, "total": None}
         elif progress["stage"] == "downloading":
@@ -311,17 +315,20 @@ async def sync_source_with_progress(source_name: str) -> AsyncGenerator[dict, No
                 "total": progress.get("total"),
             }
         elif progress["stage"] == "done":
-            raw_data = progress["data"]
+            download_size = progress["downloaded"]
         elif progress["stage"] == "error":
+            tmp_file.close()
             yield {"event": "error", "source": src.name, "error": progress["error"]}
             return
 
-    if raw_data is None:
+    if download_size == 0:
+        tmp_file.close()
         yield {"event": "error", "source": src.name, "error": "Download returned no data"}
         return
 
-    content = raw_data.decode("utf-8", errors="ignore")
-    download_size = len(raw_data)
+    tmp_file.seek(0)
+    content = tmp_file.read().decode("utf-8", errors="ignore")
+    tmp_file.close()
 
     # Parse
     yield {"event": "parsing", "source": src.name}

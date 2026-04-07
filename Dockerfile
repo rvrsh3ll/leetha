@@ -17,6 +17,7 @@ FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS compile
 WORKDIR /src
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
+COPY docs/wiki docs/wiki
 COPY --from=frontend /app/src/leetha/ui/web/dist/ src/leetha/ui/web/dist/
 
 RUN uv build --wheel --out-dir /src/wheels

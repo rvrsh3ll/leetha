@@ -265,6 +265,8 @@ class LeethaApp:
                 t1 = _time.monotonic()
                 with open(path, "r", encoding="utf-8") as fh:
                     data = _json.load(fh)
+                from leetha.fingerprint.lookup import SignatureMatcher
+                data = SignatureMatcher._compact_cache(name, data)
                 lookup._json_cache[name] = data
                 elapsed = _time.monotonic() - t1
                 logger.debug("Preloaded %s (%.1fs)", name, elapsed)

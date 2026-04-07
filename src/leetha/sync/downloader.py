@@ -46,13 +46,18 @@ async def fetch_with_updates(
     url: str,
     timeout_sec: int = 120,
     extra_headers: dict | None = None,
+    dest_file=None,
 ) -> AsyncGenerator[dict, None]:
     """Fetch a URL while yielding progress dicts as data arrives.
+
+    If *dest_file* is an open file object, data is streamed directly to
+    disk instead of accumulated in memory.  The ``"done"`` event will
+    have ``"data": None`` in that case.
 
     Yielded dicts follow one of these shapes:
         ``{"stage": "connecting"}``
         ``{"stage": "downloading", "downloaded": N, "total": T_or_None}``
-        ``{"stage": "done", "downloaded": N, "total": T, "data": <bytes>}``
+        ``{"stage": "done", "downloaded": N, "total": T, "data": <bytes|None>}``
         ``{"stage": "error", "error": "message"}``
     """
     merged_hdrs = {**_REQUEST_HEADERS, **(extra_headers or {})}
@@ -64,16 +69,23 @@ async def fetch_with_updates(
                 resp.raise_for_status()
                 content_len = resp.content_length
                 received = 0
-                parts: list[bytes] = []
 
                 yield {"stage": "downloading", "downloaded": 0, "total": content_len}
 
-                async for piece in resp.content.iter_chunked(CHUNK_SIZE):
-                    parts.append(piece)
-                    received += len(piece)
-                    yield {"stage": "downloading", "downloaded": received, "total": content_len}
+                if dest_file is not None:
+                    async for piece in resp.content.iter_chunked(CHUNK_SIZE):
+                        dest_file.write(piece)
+                        received += len(piece)
+                        yield {"stage": "downloading", "downloaded": received, "total": content_len}
+                    payload = None
+                else:
+                    parts: list[bytes] = []
+                    async for piece in resp.content.iter_chunked(CHUNK_SIZE):
+                        parts.append(piece)
+                        received += len(piece)
+                        yield {"stage": "downloading", "downloaded": received, "total": content_len}
+                    payload = b"".join(parts)
 
-                payload = b"".join(parts)
                 yield {
                     "stage": "done",
                     "downloaded": received,
