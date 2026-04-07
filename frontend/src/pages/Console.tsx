@@ -52,8 +52,48 @@ const PROTO_COLORS: Record<string, string> = {
   cdp: "#4dd0e1", stp: "#80cbc4", snmp: "#a5d6a7",
 };
 const PROTO_LIST = ["tcp_syn", "dhcpv4", "dhcpv6", "mdns", "ssdp", "netbios", "tls", "arp", "dns", "icmpv6", "lldp", "http_useragent", "ip_observed"];
-const MAX_PACKETS = 200;   // kept in memory
+const MAX_PACKETS = 200;   // kept in memory for rendering
 const MAX_VISIBLE = 50;    // rendered in DOM at once
+
+// ── Module-level state: survives component unmount/remount ──
+// The WebSocket and packet buffer persist when navigating away and back.
+let _consoleWs: WebSocket | null = null;
+let _consolePackets: ConsolePacket[] = [];
+let _consoleTotalCount = 0;
+let _consoleListeners = new Set<() => void>();
+
+function _notifyConsoleListeners() {
+  _consoleListeners.forEach((fn) => { try { fn(); } catch {} });
+}
+
+function _ensureConsoleWs() {
+  if (_consoleWs && (_consoleWs.readyState === WebSocket.OPEN || _consoleWs.readyState === WebSocket.CONNECTING)) return;
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const token = localStorage.getItem("leetha_token");
+  const wsUrl = token
+    ? `${proto}//${window.location.host}/ws/console?token=${encodeURIComponent(token)}`
+    : `${proto}//${window.location.host}/ws/console`;
+  const ws = new WebSocket(wsUrl);
+  _consoleWs = ws;
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.type === "import_progress" || data.type === "import_complete" || data.type === "finding_created") return;
+      if (!data.protocol) return;
+      _consoleTotalCount += 1;
+      _consolePackets.push(data);
+      if (_consolePackets.length > MAX_PACKETS) _consolePackets = _consolePackets.slice(-MAX_PACKETS);
+      _notifyConsoleListeners();
+    } catch {}
+  };
+
+  ws.onclose = () => {
+    _consoleWs = null;
+    // Reconnect after 3s if there are active listeners
+    setTimeout(() => { if (_consoleListeners.size > 0) _ensureConsoleWs(); }, 3000);
+  };
+}
 
 const BPF_PRESETS: Array<{ name: string; description: string; filter: string }> = [
   { name: "Default (All Protocols)", description: "Capture all supported protocols", filter: "" },
@@ -493,71 +533,44 @@ export default function Console() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pausedRef = useRef(false);
   const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const totalPacketCountRef = useRef(0);
-  const [totalPacketCount, setTotalPacketCount] = useState(0);
   pausedRef.current = paused;
 
   const { data: captureStatus } = useQuery<CaptureStatus>({
     queryKey: ["capture-status"],
     queryFn: () => fetch("/api/capture/status", { headers: authHeaders() }).then((r) => r.json()),
-    refetchInterval: 30000,  // Every 30 seconds, not 10
+    refetchInterval: 30000,
   });
 
-  // Single WebSocket, throttled renders at 500ms
+  // Subscribe to the module-level WebSocket (persists across navigation)
   useEffect(() => {
-    let mounted = true;
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const token = localStorage.getItem("leetha_token");
-    const wsUrl = token
-      ? `${proto}//${window.location.host}/ws/console?token=${encodeURIComponent(token)}`
-      : `${proto}//${window.location.host}/ws/console`;
-    const ws = new WebSocket(wsUrl);
+    _ensureConsoleWs();
+    // Sync initial state from module-level buffer
+    packetsRef.current = [..._consolePackets];
+    setPackets([..._consolePackets]);
 
-    ws.onmessage = (event) => {
-      if (!mounted) return;
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "import_progress") {
-          setImportProgress({
-            filename: data.filename || "",
-            processed: data.processed || 0,
-            total: data.total || 0,
-          });
-          return;
-        }
-        if (data.type === "import_complete") {
-          setImportProgress(null);
-          toast.success(`Import complete: ${data.filename} — ${data.processed} packets processed`);
-          return;
-        }
-        if (data.type === "finding_created") return;
-        if (!data.protocol) return;
-        totalPacketCountRef.current += 1;
-        if (pausedRef.current) return;
-        packetsRef.current.push(data);
-        if (packetsRef.current.length > MAX_PACKETS) packetsRef.current = packetsRef.current.slice(-MAX_PACKETS);
-        // Throttle: update state max 2x/sec
-        if (!renderTimer.current) {
-          renderTimer.current = setTimeout(() => {
-            renderTimer.current = null;
-            if (mounted) {
-              setPackets([...packetsRef.current]);
-              setTotalPacketCount(totalPacketCountRef.current);
-            }
-          }, 500);
-        }
-      } catch { /* ignore */ }
+    const flush = () => {
+      if (!renderTimer.current) {
+        renderTimer.current = setTimeout(() => {
+          renderTimer.current = null;
+          if (!pausedRef.current) {
+            packetsRef.current = [..._consolePackets];
+            setPackets([..._consolePackets]);
+          }
+        }, 500);
+      }
     };
-
-    ws.onclose = () => {};
-    return () => { mounted = false; ws.close(); if (renderTimer.current) clearTimeout(renderTimer.current); };
+    _consoleListeners.add(flush);
+    return () => {
+      _consoleListeners.delete(flush);
+      if (renderTimer.current) clearTimeout(renderTimer.current);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClear = useCallback(() => {
+    _consolePackets = [];
+    _consoleTotalCount = 0;
     packetsRef.current = [];
     setPackets([]);
-    totalPacketCountRef.current = 0;
-    setTotalPacketCount(0);
   }, []);
 
   const handleFileUpload = async (file: File) => {
@@ -633,7 +646,7 @@ export default function Console() {
         )}
       </div>
       {activeTab === "stream" && <LiveStreamTab packets={packets} paused={paused} setPaused={setPaused} autoScroll={autoScroll} setAutoScroll={setAutoScroll} protocolFilter={protocolFilter} setProtocolFilter={setProtocolFilter} macFilter={macFilter} setMacFilter={setMacFilter} ipFilter={ipFilter} setIpFilter={setIpFilter} textFilter={textFilter} setTextFilter={setTextFilter} onClear={handleClear} />}
-      {activeTab === "overview" && <NetworkOverviewTab packets={packets} sessionPackets={totalPacketCount} />}
+      {activeTab === "overview" && <NetworkOverviewTab packets={packets} sessionPackets={_consoleTotalCount} />}
       {activeTab === "filters" && <FilterBuilderTab captureStatus={captureStatus} />}
       {activeTab === "capture" && <CaptureConfigTab captureStatus={captureStatus} />}
     </div>
