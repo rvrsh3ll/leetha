@@ -267,6 +267,8 @@ class LeethaConsole:
         # Skip banner when re-launched with sudo (interfaces pre-selected)
         if not self.interfaces:
             self._print_banner()
+            # Offer to sync sources if none (or few) are cached
+            await self._maybe_prompt_sync()
 
         # Initialize database
         self.db = Database(self.config.db_path)
@@ -523,6 +525,41 @@ class LeethaConsole:
             if (self.config.cache_dir / f"{cache_name}.json").is_file():
                 count += 1
         return count
+
+    async def _maybe_prompt_sync(self) -> None:
+        """Prompt user to sync fingerprint sources if few or none are cached."""
+        synced = self._count_synced_sources()
+        total = len(SourceRegistry().list_sources())
+        if synced >= total:
+            return  # All sources present
+
+        if synced == 0:
+            msg = "  [yellow]No fingerprint sources are cached.[/yellow]"
+        else:
+            msg = f"  [yellow]Only {synced}/{total} fingerprint sources are cached.[/yellow]"
+
+        self.console.print(msg)
+        self.console.print(
+            "  [dim]Syncing sources improves device identification accuracy.[/dim]"
+        )
+        self.console.print()
+
+        try:
+            answer = input("  Sync sources now? [Y/n] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            self.console.print()
+            return
+
+        if answer in ("", "y", "yes"):
+            from leetha.sync import run_sync
+            await run_sync()
+            self.console.print()
+        else:
+            self.console.print(
+                "  [dim]Skipped — run[/dim] [bold cyan]sync[/bold cyan] "
+                "[dim]any time to download sources.[/dim]"
+            )
+            self.console.print()
 
     # Commands
 

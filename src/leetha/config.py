@@ -57,6 +57,8 @@ class LeethaConfig:
 
     def __post_init__(self):
         self.db_path = self.data_dir / "leetha.db"
+        # Migrate from legacy paths if new location is empty
+        self._migrate_legacy_paths()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         # When running under sudo, fix ownership so the real user
@@ -64,6 +66,34 @@ class LeethaConfig:
         from leetha.platform import fix_ownership
         fix_ownership(self.data_dir)
         fix_ownership(self.cache_dir)
+
+    def _migrate_legacy_paths(self) -> None:
+        """Move data from pre-consolidation paths into ~/.leetha."""
+        import shutil
+        home = _real_home()
+        old_data = home / ".local" / "share" / "leetha"
+        old_cache = home / ".cache" / "leetha"
+
+        # Only migrate if user hasn't overridden paths via env vars
+        if os.environ.get("LEETHA_DATA_DIR") or os.environ.get("LEETHA_CACHE_DIR"):
+            return
+
+        # Migrate data files (DB, settings, patterns, etc.)
+        if old_data.is_dir() and not self.db_path.exists():
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            for item in old_data.iterdir():
+                dest = self.data_dir / item.name
+                if not dest.exists():
+                    shutil.move(str(item), str(dest))
+            # Clean up empty old directory
+            try:
+                old_data.rmdir()
+            except OSError:
+                pass  # Not empty — some files may remain
+
+        # Migrate cache (fingerprint databases)
+        if old_cache.is_dir() and not self.cache_dir.exists():
+            shutil.move(str(old_cache), str(self.cache_dir))
 
 
 # Global config instance

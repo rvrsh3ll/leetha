@@ -2528,6 +2528,18 @@ async def run_web_async(interfaces: list | None = None, host: str = "0.0.0.0", p
         app_instance = app
     else:
         app_instance = LeethaApp(interfaces=interfaces)
+
+    # Show admin token so user can log in
+    if _auth_enabled:
+        from leetha.auth.tokens import load_admin_token
+        from rich.console import Console as RichConsole
+        raw = load_admin_token()
+        if raw:
+            rc = RichConsole()
+            rc.print(f"\n[bold green]Admin token:[/bold green]")
+            rc.print(f"[bold yellow]{raw}[/bold yellow]")
+            rc.print("[dim]Saved at ~/.leetha/admin-token[/dim]\n")
+
     config = uvicorn.Config(_wrapped_app, host=host, port=port, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()

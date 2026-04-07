@@ -23,6 +23,9 @@ def test_handle_dhcp_anomalies_uses_provided_loop():
         args = mock_asyncio.run_coroutine_threadsafe.call_args[0]
         assert args[1] is mock_loop
         mock_asyncio.get_event_loop.assert_not_called()
+        # Close the coroutine that was passed to the mock to suppress
+        # "coroutine was never awaited" warning.
+        args[0].close()
 
 
 def test_on_dhcp_packet_captures_running_loop():
