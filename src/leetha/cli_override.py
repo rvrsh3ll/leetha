@@ -9,91 +9,88 @@ from __future__ import annotations
 import json
 
 from leetha.config import get_config
-from leetha.store.database import Database
+from leetha.store.store import Store
 
 
 async def handle_device_override(parsed_args):
-    """Process the device-override subcommand dispatched from the CLI.
-
-    Connects to the backing store, routes to the requested action
-    (display_all / inspect / apply / reset), then tears down the
-    database connection.
-    """
+    """Process the device-override subcommand."""
     cfg = get_config()
-    storage = Database(cfg.db_path)
-    await storage.initialize()
+    store = Store(cfg.db_path)
+    await store.initialize()
 
     try:
         cmd = parsed_args.override_action
 
         if cmd == "list":
-            all_devices = await storage.list_devices()
-            with_overrides = [
-                rec for rec in all_devices if rec.manual_override
-            ]
-            if not with_overrides:
+            overrides = await store.overrides.find_all()
+            if not overrides:
                 print("No device overrides configured.")
                 return
             print(f"{'MAC':<20s} {'Override'}")
             print("-" * 60)
-            for rec in with_overrides:
-                print(f"{rec.mac:<20s} {json.dumps(rec.manual_override)}")
+            for o in overrides:
+                mac = o.pop("hw_addr")
+                o.pop("updated_at", None)
+                fields = {k: v for k, v in o.items() if v is not None}
+                print(f"{mac:<20s} {json.dumps(fields)}")
 
         elif cmd == "show":
-            node = await storage.get_device(parsed_args.mac)
-            if node is None:
-                print(f"Device {parsed_args.mac} not found.")
-                return
-            if node.manual_override:
-                print(json.dumps(node.manual_override, indent=2))
+            override = await store.overrides.find_by_addr(parsed_args.mac)
+            if override:
+                print(json.dumps(override, indent=2))
             else:
                 print(f"No override set for {parsed_args.mac}.")
 
         elif cmd == "set":
-            node = await storage.get_device(parsed_args.mac)
-            if node is None:
+            verdict = await store.verdicts.find_by_addr(parsed_args.mac)
+            host = await store.hosts.find_by_addr(parsed_args.mac)
+            if not verdict and not host:
                 print(f"Device {parsed_args.mac} not found.")
                 return
 
             overrides = {}
-            if parsed_args.device_type:
-                overrides["device_type"] = parsed_args.device_type
-            if parsed_args.manufacturer:
-                overrides["manufacturer"] = parsed_args.manufacturer
-            if parsed_args.os_family:
-                overrides["os_family"] = parsed_args.os_family
-            if parsed_args.os_version:
-                overrides["os_version"] = parsed_args.os_version
+            for field in ("device_type", "manufacturer", "os_family",
+                          "os_version", "model", "hostname",
+                          "connection_type", "disposition", "notes"):
+                val = getattr(parsed_args, field, None)
+                if val is not None:
+                    overrides[field] = val
 
             if not overrides:
                 print(
                     "No override fields provided. Use --device-type, "
-                    "--manufacturer, --os-family, or --os-version."
+                    "--manufacturer, --os-family, --os-version, --model, "
+                    "--hostname, --connection-type, --disposition, or --notes."
                 )
                 return
 
-            node.manual_override = overrides
-            for attr_name in ("device_type", "manufacturer", "os_family", "os_version"):
-                attr_val = overrides.get(attr_name)
-                if attr_val is not None:
-                    setattr(node, attr_name, attr_val)
+            await store.overrides.upsert(parsed_args.mac, overrides)
 
-            await storage.upsert_device(node)
+            if "disposition" in overrides and host:
+                host.disposition = overrides["disposition"]
+                await store.hosts.upsert(host)
+
             print(f"Override set for {parsed_args.mac}: {json.dumps(overrides)}")
 
         elif cmd == "clear":
-            node = await storage.get_device(parsed_args.mac)
-            if node is None:
-                print(f"Device {parsed_args.mac} not found.")
+            override = await store.overrides.find_by_addr(parsed_args.mac)
+            if not override:
+                print(f"No override set for {parsed_args.mac}.")
                 return
-            node.manual_override = None
-            await storage.upsert_device(node)
+
+            if override.get("disposition"):
+                host = await store.hosts.find_by_addr(parsed_args.mac)
+                if host and host.disposition != "self":
+                    host.disposition = "new"
+                    await store.hosts.upsert(host)
+
+            await store.overrides.delete(parsed_args.mac)
             print(f"Override cleared for {parsed_args.mac}.")
 
         else:
             print("Usage: leetha override {list|show|set|clear} [mac]")
     finally:
-        await storage.close()
+        await store.close()
 
 
 # Backward-compatible alias

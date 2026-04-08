@@ -133,6 +133,11 @@ console commands:
     override_set.add_argument("--manufacturer", help="Manufacturer override")
     override_set.add_argument("--os-family", dest="os_family", help="OS family override")
     override_set.add_argument("--os-version", dest="os_version", help="OS version override")
+    override_set.add_argument("--model", help="Device model override")
+    override_set.add_argument("--hostname", help="Hostname override")
+    override_set.add_argument("--connection-type", dest="connection_type", help="Connection type (wired/wireless)")
+    override_set.add_argument("--disposition", help="Disposition (new/known/suspicious)")
+    override_set.add_argument("--notes", help="Analyst notes")
 
     override_clear = override_sub.add_parser("clear", help="Clear override for a device")
     override_clear.add_argument("mac", help="Device MAC address")
