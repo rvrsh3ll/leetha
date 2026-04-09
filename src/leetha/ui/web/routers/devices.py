@@ -93,9 +93,12 @@ async def api_devices(
         interface=interface, confidence_min=confidence_min,
     )
 
-    # Sanitize hostnames
+    # Sanitize hostnames and reject vendor-mismatched forwarded mDNS names
+    from leetha.evidence.hostname import hostname_matches_vendor
     for d in devices:
         d["hostname"] = _sanitize_hostname(d.get("hostname"))
+        if d.get("hostname") and not hostname_matches_vendor(d["hostname"], d.get("manufacturer")):
+            d["hostname"] = None
 
     return {
         "devices": devices,
@@ -230,6 +233,10 @@ async def api_device(mac: str):
     override = await app_instance.store.overrides.find_by_addr(mac)
     device = _build_device_dict(verdict, host, override)
     device["hostname"] = _sanitize_hostname(device.get("hostname"))
+    # Reject forwarded mDNS hostnames that belong to a different vendor
+    from leetha.evidence.hostname import hostname_matches_vendor
+    if device.get("hostname") and not hostname_matches_vendor(device["hostname"], device.get("manufacturer")):
+        device["hostname"] = None
     # Include sightings as observations for compatibility
     try:
         sightings = await app_instance.store.sightings.for_host(mac)
@@ -554,10 +561,18 @@ async def get_device_activity(mac: str):
             "GROUP BY hour ORDER BY hour",
             (mac,))
         rows = await cursor.fetchall()
-        activity = {row[0]: row[1] for row in rows}
+        # Build 24-element array indexed by hour (0-23)
+        counts = [0] * 24
+        for row in rows:
+            try:
+                h = int(row[0])
+                if 0 <= h < 24:
+                    counts[h] = row[1]
+            except (ValueError, IndexError):
+                pass
     except Exception:
-        activity = {}
-    return {"hourly_counts": activity}
+        counts = [0] * 24
+    return {"hourly_counts": counts}
 
 
 @router.get("/api/devices/{mac}/timeline")

@@ -81,3 +81,48 @@ def is_valid_hostname(name: str | None) -> bool:
         return False
 
     return True
+
+
+# Hostname keywords that belong to a specific vendor.  If the device's
+# resolved vendor doesn't match, the hostname is from a forwarded mDNS
+# packet and should be stripped.
+_HOSTNAME_VENDOR_KEYWORDS: dict[str, set[str]] = {
+    "lutron": {"Lutron"},
+    "hue": {"Philips", "Signify"},
+    "sonos": {"Sonos"},
+    "roku": {"Roku"},
+    "nest": {"Google"},
+    "echo": {"Amazon"},
+    "alexa": {"Amazon"},
+    "homepod": {"Apple"},
+    "chromecast": {"Google"},
+    "firestick": {"Amazon"},
+    "ring": {"Amazon", "Ring"},
+    "roborock": {"Roborock"},
+    "roomba": {"iRobot"},
+    "ecobee": {"ecobee"},
+    "dyson": {"Dyson"},
+}
+
+
+def hostname_matches_vendor(hostname: str | None, vendor: str | None) -> bool:
+    """Return True if the hostname is coherent with the vendor.
+
+    Returns True when:
+    - hostname is None/empty (nothing to reject)
+    - vendor is None/empty (can't verify, assume OK)
+    - hostname contains no vendor-specific keywords
+    - hostname keyword matches the device vendor
+
+    Returns False when a keyword in the hostname belongs to a
+    DIFFERENT vendor than the device (forwarded mDNS).
+    """
+    if not hostname or not vendor:
+        return True
+    hn_lower = hostname.lower()
+    for keyword, legit_vendors in _HOSTNAME_VENDOR_KEYWORDS.items():
+        if keyword in hn_lower:
+            if not any(v.lower() in vendor.lower() or vendor.lower() in v.lower()
+                       for v in legit_vendors):
+                return False
+    return True
