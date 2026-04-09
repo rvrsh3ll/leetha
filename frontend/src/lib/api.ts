@@ -748,6 +748,23 @@ export async function fetchTopology(): Promise<{
   return apiFetch("/api/topology");
 }
 
+export async function createTopologyOverride(childMac: string, parentMac: string) {
+  return apiFetch<{ status: string; child_mac: string; parent_mac: string }>(
+    "/api/topology/override",
+    { method: "PUT", body: JSON.stringify({ child_mac: childMac, parent_mac: parentMac }) },
+  );
+}
+
+export async function deleteTopologyOverride(mac: string) {
+  return apiFetch<{ status: string }>(`/api/topology/override/${mac}`, { method: "DELETE" });
+}
+
+export async function fetchTopologyOverrides(): Promise<{
+  overrides: Array<{ child_mac: string; parent_mac: string }>;
+}> {
+  return apiFetch("/api/topology/overrides");
+}
+
 export interface TimelineEvent {
   timestamp: string;
   type: "first_seen" | "observation" | "classification" | "ip_change" | "finding";
