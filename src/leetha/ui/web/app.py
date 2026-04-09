@@ -808,7 +808,8 @@ async def _build_context_from_store(store, data_dir, interface=None,
     from leetha.store.models import Device, Observation
 
     # Build Device objects from ALL hosts (including those without verdicts)
-    all_hosts = await store.hosts.find_all(limit=1000)
+    host_count = await store.hosts.count()
+    all_hosts = await store.hosts.find_all(limit=max(host_count, 1000))
     devices = []
     for h in all_hosts:
         v = await store.verdicts.find_by_addr(h.hw_addr)
@@ -1686,10 +1687,11 @@ async def api_stats():
 async def api_device_type_stats():
     """Device count by type for dashboard breakdown."""
     try:
-        # Use new verdicts table
+        # LEFT JOIN from hosts so devices without verdicts are counted
         cursor = await app_instance.store.connection.execute(
-            "SELECT COALESCE(category, 'unknown') as dtype, COUNT(*) as cnt "
-            "FROM verdicts GROUP BY dtype ORDER BY cnt DESC"
+            "SELECT COALESCE(v.category, 'unknown') as dtype, COUNT(*) as cnt "
+            "FROM hosts h LEFT JOIN verdicts v ON h.hw_addr = v.hw_addr "
+            "GROUP BY dtype ORDER BY cnt DESC"
         )
         rows = await cursor.fetchall()
         return {"types": [{"type": r[0], "count": r[1]} for r in rows]}
@@ -1726,14 +1728,21 @@ async def api_activity_stats():
 async def api_filter_options():
     """Available filter values for device dropdowns (cached 30s)."""
     try:
+        # LEFT JOIN from hosts so devices without verdicts contribute to filters
         dt_cursor = await app_instance.store.connection.execute(
-            "SELECT DISTINCT category FROM verdicts WHERE category IS NOT NULL ORDER BY category"
+            "SELECT DISTINCT v.category FROM hosts h "
+            "LEFT JOIN verdicts v ON h.hw_addr = v.hw_addr "
+            "WHERE v.category IS NOT NULL ORDER BY v.category"
         )
         os_cursor = await app_instance.store.connection.execute(
-            "SELECT DISTINCT platform FROM verdicts WHERE platform IS NOT NULL ORDER BY platform"
+            "SELECT DISTINCT v.platform FROM hosts h "
+            "LEFT JOIN verdicts v ON h.hw_addr = v.hw_addr "
+            "WHERE v.platform IS NOT NULL ORDER BY v.platform"
         )
         mfr_cursor = await app_instance.store.connection.execute(
-            "SELECT DISTINCT vendor FROM verdicts WHERE vendor IS NOT NULL ORDER BY vendor"
+            "SELECT DISTINCT v.vendor FROM hosts h "
+            "LEFT JOIN verdicts v ON h.hw_addr = v.hw_addr "
+            "WHERE v.vendor IS NOT NULL ORDER BY v.vendor"
         )
         return {
             "device_types": [r[0] for r in await dt_cursor.fetchall()],
@@ -1922,13 +1931,38 @@ async def api_topology():
 
     try:
         # 1. Devices — from ALL hosts (including those without verdicts)
-        all_hosts = await app_instance.store.hosts.find_all(limit=1000)
+        topo_host_count = await app_instance.store.hosts.count()
+        all_hosts = await app_instance.store.hosts.find_all(limit=max(topo_host_count, 1000))
         devices = []
         for h in all_hosts:
             v = await app_instance.store.verdicts.find_by_addr(h.hw_addr)
             ovr = await app_instance.store.overrides.find_by_addr(h.hw_addr)
             d = _build_device_dict(v, h, ovr)
             devices.append(d)
+
+        # 1a. Enrich devices with all known IPs from ARP history
+        try:
+            arp_by_mac: dict[str, list[str]] = {}
+            arp_cursor = await app_instance.db._conn.execute(
+                "SELECT mac, ip FROM arp_history ORDER BY last_seen DESC"
+            )
+            async with arp_cursor:
+                async for row in arp_cursor:
+                    arp_by_mac.setdefault(row[0], []).append(row[1])
+            for d in devices:
+                extra_ips = arp_by_mac.get(d["mac"], [])
+                # Deduplicate: keep primary ip_v4 first, then others
+                primary = d.get("ip_v4")
+                all_ips = []
+                if primary:
+                    all_ips.append(primary)
+                for ip in extra_ips:
+                    if ip not in all_ips:
+                        all_ips.append(ip)
+                if len(all_ips) > 1:
+                    d["all_ips"] = all_ips
+        except Exception:
+            pass
 
         # 1b. Gather mDNS services and LLDP/CDP presence per device for connection type
         device_mdns_services: dict[str, list[str]] = {}
@@ -2407,6 +2441,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json(event)
                 continue
 
+            # New host discovered — send immediately so UI shows new devices
+            # before verdict computation completes
+            if isinstance(event, dict) and event.get("type") == "device_discovered":
+                await websocket.send_json({
+                    "type": "device_discovered",
+                    "device": event.get("device", {}),
+                })
+                continue
+
             # New pipeline events have {"type": "device_update", "mac": ..., "verdict": {...}}
             if isinstance(event, dict) and event.get("type") == "device_update" and "verdict" in event:
                 verdict_data = event["verdict"]
@@ -2519,6 +2562,10 @@ async def websocket_console(websocket: WebSocket):
             # Pass through import events directly
             if isinstance(event, dict) and event.get("type") in ("import_progress", "import_complete", "finding_created"):
                 await websocket.send_json(event)
+                continue
+
+            # New host discovered — skip for console (no packet data to display)
+            if isinstance(event, dict) and event.get("type") == "device_discovered":
                 continue
 
             # New pipeline events: {"type": "device_update", "mac": ..., "verdict": {...}, "packet": {...}}

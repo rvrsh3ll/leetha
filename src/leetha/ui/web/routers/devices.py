@@ -125,7 +125,8 @@ async def export_devices(
     app_instance = _get_app()
 
     # Build device dicts from ALL hosts (including those without verdicts)
-    hosts = await app_instance.store.hosts.find_all(limit=10000)
+    host_count = await app_instance.store.hosts.count()
+    hosts = await app_instance.store.hosts.find_all(limit=max(host_count, 10000))
     all_devices = []
     for h in hosts:
         v = await app_instance.store.verdicts.find_by_addr(h.hw_addr)
@@ -234,6 +235,21 @@ async def api_device(mac: str):
         sightings = await app_instance.store.sightings.for_host(mac)
     except Exception:
         sightings = []
+    # Fetch all known IPs from ARP history (multiple VLANs/interfaces)
+    known_ips = []
+    try:
+        arp_history = await app_instance.db.get_arp_history_for_mac(mac)
+        known_ips = [
+            {"ip": e["ip"], "interface": e["interface"],
+             "last_seen": e["last_seen"], "packet_count": e["packet_count"]}
+            for e in arp_history
+        ]
+    except Exception:
+        pass
+
+    if known_ips:
+        device["known_ips"] = known_ips
+
     return {
         "device": device,
         "observations": [

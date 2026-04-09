@@ -193,6 +193,7 @@ function TopologyInner({ subscribe }: TopologyInnerProps) {
           os_family: n.os_family,
           connection_type: (n as any).connection_type,
           is_self: (n as any).is_self,
+          all_ips: (n as any).all_ips,
           tier,
         },
       };

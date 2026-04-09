@@ -1911,6 +1911,7 @@ def build_topology_graph(
             "os_family": d.get("os_family"),
             "connection_type": d.get("connection_type", "unknown"),
             "is_self": d.get("alert_status") == "self",
+            "all_ips": d.get("all_ips"),
         }
         device_nodes.append(node)
         device_by_mac[mac] = node

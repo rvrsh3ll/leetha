@@ -41,7 +41,7 @@ class Pipeline:
 
     def __init__(self, store, verdict_engine: VerdictEngine | None = None,
                  on_verdict=None, on_arp=None, on_dhcp=None, on_gateway_hint=None,
-                 is_local_mac=None):
+                 is_local_mac=None, on_new_host=None):
         self.store = store
         self.verdict_engine = verdict_engine or VerdictEngine()
         self._on_verdict = on_verdict          # async(hw_addr, verdict, packet)
@@ -49,9 +49,12 @@ class Pipeline:
         self._on_dhcp = on_dhcp                # callable(packet) -- sync fire-and-forget
         self._on_gateway_hint = on_gateway_hint  # async(mac, ip, source, interface)
         self._is_local_mac = is_local_mac      # callable(mac) -> bool
+        self._on_new_host = on_new_host        # async(hw_addr, host, packet)
         self._lookup = FingerprintLookup()
         self._evidence_buffer: dict[str, list[Evidence]] = defaultdict(list)
         self._oui_vendors: dict[str, str] = {}  # MAC -> OUI vendor name
+        self._oui_device_types: dict[str, str] = {}  # MAC -> OUI device type
+        self._gateway_macs: set[str] = set()  # MACs known to be gateways/routers
         self._lookup_done: set = set()  # (MAC, protocol) pairs already looked up
         self._batch_queue: list = []
         self._processor_instances: dict[str, object] = {}
@@ -74,6 +77,41 @@ class Pipeline:
         for name, cls in get_all_rules().items():
             self._rule_instances.append(cls())
 
+    _MDNS_EVIDENCE_SOURCES = frozenset((
+        "mdns_service", "mdns_exclusive", "mdns",
+        "mdns_txt", "mdns_name", "mdns_apple_model",
+    ))
+
+    def _scrub_infra_mdns(self, hw_addr: str) -> None:
+        """Retroactively strip mDNS hostnames/vendors from evidence buffer
+        for a device that was just identified as infrastructure.
+
+        Routers/APs forward multicast, so mDNS evidence attributed to their
+        MAC likely belongs to a different device (e.g., Lutron bridge hostname
+        on a Ubiquiti router).
+        """
+        buf = self._evidence_buffer.get(hw_addr)
+        if not buf:
+            return
+        ref_vendor = self._oui_vendors.get(hw_addr)
+        for ev in buf:
+            if ev.source not in self._MDNS_EVIDENCE_SOURCES:
+                continue
+            # Keep mDNS evidence that matches the device's own vendor
+            if ref_vendor and ev.vendor:
+                if (ev.vendor == ref_vendor
+                        or ref_vendor.lower() in ev.vendor.lower()
+                        or ev.vendor.lower() in ref_vendor.lower()):
+                    continue
+            # Strip everything else
+            ev.certainty = 0.0
+            ev.vendor = None
+            ev.category = None
+            ev.platform = None
+            ev.platform_version = None
+            ev.model = None
+            ev.hostname = None
+
     async def process(self, packet: CapturedPacket) -> None:
         """Process a single captured packet through the full pipeline."""
         protocol = packet.protocol
@@ -92,19 +130,24 @@ class Pipeline:
                 logger.debug("DHCP side effect failed", exc_info=True)
 
         # Gateway learning from DHCP OFFER/ACK or ICMPv6 RA
-        if self._on_gateway_hint:
-            if packet.protocol == "dhcpv4":
-                raw_opts = packet.fields.get("raw_options", {})
-                msg_type = raw_opts.get("message-type")
-                if msg_type in (2, 5) and packet.ip_addr:
+        if packet.protocol == "dhcpv4":
+            raw_opts = packet.fields.get("raw_options", {})
+            msg_type = raw_opts.get("message-type")
+            if msg_type in (2, 5) and packet.ip_addr:
+                self._gateway_macs.add(packet.hw_addr)
+                self._scrub_infra_mdns(packet.hw_addr)
+                if self._on_gateway_hint:
                     try:
                         await self._on_gateway_hint(
                             packet.hw_addr, packet.ip_addr, "dhcp_server",
                             packet.interface or "")
                     except Exception:
                         pass
-            elif packet.protocol == "icmpv6":
-                if packet.fields.get("icmpv6_type") == "router_advertisement" and packet.ip_addr:
+        elif packet.protocol == "icmpv6":
+            if packet.fields.get("icmpv6_type") == "router_advertisement" and packet.ip_addr:
+                self._gateway_macs.add(packet.hw_addr)
+                self._scrub_infra_mdns(packet.hw_addr)
+                if self._on_gateway_hint:
                     try:
                         await self._on_gateway_hint(
                             packet.hw_addr, packet.ip_addr, "auto_gateway",
@@ -112,20 +155,19 @@ class Pipeline:
                     except Exception:
                         pass
 
-        # 1. Find and run the registered processor
+        # 1. Find and run the registered processor.
+        # NEVER return early here — the host upsert and sighting record
+        # below must run for every packet so every MAC we see appears in
+        # the devices list, even when the processor is missing or crashes.
+        evidence_list = []
         processor = self._processor_instances.get(protocol)
         if processor is None:
             logger.debug("No processor for protocol: %s", protocol)
-            return
-
-        try:
-            evidence_list = processor.analyze(packet)
-        except Exception:
-            logger.debug("Processor failed for %s", protocol, exc_info=True)
-            return
-
-        if not evidence_list:
-            evidence_list = []
+        else:
+            try:
+                evidence_list = processor.analyze(packet) or []
+            except Exception:
+                logger.debug("Processor failed for %s", protocol, exc_info=True)
 
         hw_addr = packet.hw_addr
 
@@ -134,10 +176,21 @@ class Pipeline:
             mac_matches = self._lookup.match_mac(hw_addr)
             for match in mac_matches:
                 evidence_list.append(self._match_to_evidence(match))
-            # Cache OUI vendor for cross-validation
+            # Cache OUI vendor and device type for cross-validation
             oui_hit = next((m for m in mac_matches if m.source == "oui"), None)
             if oui_hit and oui_hit.manufacturer:
                 self._oui_vendors[hw_addr] = oui_hit.manufacturer
+            if oui_hit:
+                oui_dtype = oui_hit.device_type or oui_hit.category or ""
+                self._oui_device_types[hw_addr] = oui_dtype.lower()
+                # Auto-flag infrastructure devices as gateways so their
+                # forwarded mDNS traffic doesn't poison their identity.
+                if oui_dtype.lower() in (
+                    "router", "switch", "gateway", "firewall",
+                    "access_point", "ap", "bridge", "mesh_router",
+                ):
+                    self._gateway_macs.add(hw_addr)
+                    self._scrub_infra_mdns(hw_addr)
 
         # Protocol-specific fingerprint lookups (once per protocol per MAC)
         lookup_key = (hw_addr, protocol)
@@ -150,16 +203,79 @@ class Pipeline:
             except Exception:
                 logger.debug("Fingerprint lookup failed for %s", protocol, exc_info=True)
 
-        # Cross-validate: if mDNS evidence vendor conflicts with OUI vendor,
-        # lower certainty. Prevents forwarded mDNS from overriding gateway identity.
+        # Cross-validate: mDNS traffic is unreliable for source attribution
+        # because routers/gateways/APs forward multicast, rewriting the
+        # Ethernet source MAC. When OUI says "Ubiquiti router" but mDNS says
+        # "Apple smart speaker" or "Lutron bridge", the mDNS evidence is
+        # from a forwarded packet — not this device.
+        #
+        # For randomized MACs (no OUI), we use the dominant vendor from
+        # accumulated evidence (e.g. Apple from _apple-mobdev2._tcp) as the
+        # reference vendor to catch conflicting mDNS from other devices.
+        _MDNS_SOURCES = frozenset((
+            "mdns_service", "mdns_exclusive", "mdns",
+            "mdns_txt", "mdns_name", "mdns_apple_model",
+        ))
         oui_vendor = self._oui_vendors.get(hw_addr)
-        if oui_vendor:
+        is_infra = hw_addr in self._gateway_macs
+
+        # Determine the reference vendor: OUI if available, otherwise the
+        # dominant vendor from all accumulated + current evidence.
+        ref_vendor = oui_vendor
+        if not ref_vendor:
+            vendor_votes: dict[str, float] = {}
+            for ev in list(self._evidence_buffer.get(hw_addr, [])) + evidence_list:
+                if ev.vendor:
+                    vendor_votes[ev.vendor] = vendor_votes.get(ev.vendor, 0) + ev.certainty
+            if vendor_votes:
+                ref_vendor = max(vendor_votes, key=vendor_votes.get)
+
+        if ref_vendor:
             for ev in evidence_list:
-                if (ev.vendor and ev.vendor != oui_vendor
-                        and ev.source in ("mdns_service", "mdns_exclusive", "mdns",
-                                          "mdns_txt", "mdns_name")
-                        and oui_vendor.lower() not in (ev.vendor or "").lower()):
-                    ev.certainty = min(ev.certainty, 0.30)
+                if ev.source not in _MDNS_SOURCES:
+                    continue
+
+                def _vendors_match(a: str | None, b: str) -> bool:
+                    if not a:
+                        return False
+                    return (a == b
+                            or b.lower() in a.lower()
+                            or a.lower() in b.lower())
+
+                if is_infra:
+                    # Gateway/router/AP: ALL mDNS is suspect because these
+                    # devices forward/reflect multicast traffic. Only keep
+                    # mDNS evidence whose vendor matches the reference vendor
+                    # (e.g., Ubiquiti mDNS on a Ubiquiti router is real).
+                    if not _vendors_match(ev.vendor, ref_vendor):
+                        ev.certainty = 0.0
+                        ev.vendor = None
+                        ev.category = None
+                        ev.platform = None
+                        ev.platform_version = None
+                        ev.model = None
+                        ev.hostname = None
+                else:
+                    # Non-infrastructure device: suppress mDNS evidence when
+                    # vendor conflicts OR when vendor is unset (forwarded
+                    # multicast from a different device type).
+                    if ev.vendor and not _vendors_match(ev.vendor, ref_vendor):
+                        # Explicit vendor conflict — lower certainty,
+                        # strip category and hostname.
+                        ev.certainty = min(ev.certainty, 0.15)
+                        ev.category = None
+                        ev.hostname = None
+                    elif not ev.vendor and ev.hostname:
+                        # mDNS hostname with no vendor attribution is suspect
+                        # on a device whose identity is already established.
+                        # Only keep it if no better hostname exists.
+                        has_better_hostname = any(
+                            e.hostname and e.vendor and _vendors_match(e.vendor, ref_vendor)
+                            for e in list(self._evidence_buffer.get(hw_addr, [])) + evidence_list
+                            if e is not ev
+                        )
+                        if has_better_hostname:
+                            ev.hostname = None
 
         # 2. Record sighting (non-fatal if it fails) — always record
         # regardless of evidence so protocol coverage stats are accurate
@@ -211,11 +327,14 @@ class Pipeline:
 
         # Preserve existing disposition so we don't reset "known" back to "new"
         # Auto-tag local device MACs as "self"
+        is_new_host = False
         try:
             existing_host = await self.store.hosts.find_by_addr(hw_addr)
             disposition = existing_host.disposition if existing_host else "new"
+            is_new_host = existing_host is None
         except Exception:
             disposition = "new"
+            is_new_host = True
         if disposition != "self" and self._is_local_mac and self._is_local_mac(hw_addr):
             disposition = "self"
 
@@ -232,6 +351,14 @@ class Pipeline:
             await self.store.hosts.upsert(host)
         except Exception:
             logger.debug("Host upsert failed for %s", hw_addr, exc_info=True)
+
+        # Notify subscribers immediately when a new device is first discovered
+        # so the UI updates without waiting for verdict computation.
+        if is_new_host and self._on_new_host:
+            try:
+                await self._on_new_host(hw_addr, host, packet)
+            except Exception:
+                logger.debug("New host callback failed for %s", hw_addr, exc_info=True)
 
         if not evidence_list:
             return
