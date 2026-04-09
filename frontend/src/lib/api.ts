@@ -502,6 +502,23 @@ export async function fetchArpHistory(query: { mac?: string; ip?: string }): Pro
 
 // --- Attack Surface types ---
 
+export interface ToolRecommendation {
+  name: string;
+  command: string;
+  description?: string;
+  url?: string;
+  install_hint?: string;
+}
+
+export interface AffectedDevice {
+  mac: string;
+  ip?: string;
+  hostname?: string;
+  port?: string;
+  service_version?: string;
+  banner?: string;
+}
+
 export interface AttackFinding {
   rule_id: string;
   title: string;
@@ -509,8 +526,9 @@ export interface AttackFinding {
   description: string;
   severity: string;
   category: string;
-  affected_devices: Array<{ mac: string; ip?: string; hostname?: string; port?: string }>;
-  tools: Array<{ name: string; command: string; description?: string }>;
+  category_label?: string;
+  affected_devices: AffectedDevice[];
+  tools: ToolRecommendation[];
   evidence: string[];
   chain_ids?: string[];
 }
@@ -520,7 +538,7 @@ export interface ChainTrigger {
   name: string;
   severity: string;
   evidence?: string[];
-  affected_devices?: Array<{ mac: string; ip?: string; hostname?: string; port?: string }>;
+  affected_devices?: AffectedDevice[];
 }
 
 export interface AttackChain {
@@ -532,7 +550,7 @@ export interface AttackChain {
   interface?: string;
   triggered_by?: ChainTrigger[];
   steps?: Array<{ order: number; description: string }>;
-  tools?: Array<{ name: string; command: string; description?: string }>;
+  tools?: ToolRecommendation[];
 }
 
 export interface AttackSurfaceSummary {
@@ -593,8 +611,13 @@ export interface LeethaSettings {
 export interface DbInfo {
   db_path: string;
   db_size_bytes: number;
+  wal_size_bytes: number;
   device_count: number;
   cache_dir: string;
+  table_counts: Record<string, number>;
+  page_count: number;
+  page_size: number;
+  last_modified: number | null;
 }
 
 // --- Settings endpoints ---
@@ -644,6 +667,20 @@ export async function runQuery(sql: string) {
 
 export async function clearDatabase() {
   return apiFetch<{ status: string }>("/api/settings/db", { method: "DELETE" });
+}
+
+export async function exportDatabase(format: "sqlite" | "sql") {
+  const res = await fetch(`/api/settings/db-export?format=${format}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Export failed: ${res.status} ${res.statusText}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = format === "sqlite" ? "leetha.db" : "leetha-dump.sql";
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // --- Auth ---
