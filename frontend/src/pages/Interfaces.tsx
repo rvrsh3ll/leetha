@@ -12,7 +12,6 @@ import {
   disconnectRemoteSensor,
   fetchBuildTargets,
   fetchServerAddresses,
-  checkSensorName,
   fetchBuildHistory,
   deleteBuildHistory,
   type NetworkInterface,
@@ -192,7 +191,6 @@ export default function Interfaces() {
   const [buildLog, setBuildLog] = useState<Array<{ stage: string; message: string }>>([]);
   const [buildDownloadId, setBuildDownloadId] = useState<string | null>(null);
   const [buildDownloadFilename, setBuildDownloadFilename] = useState("leetha-sensor");
-  const [confirmRevokeOpen, setConfirmRevokeOpen] = useState(false);
   const buildLogRef = useRef<HTMLDivElement>(null);
 
   // Auto-select first server address
@@ -248,22 +246,6 @@ export default function Interfaces() {
       return;
     }
 
-    // Check for duplicate name
-    try {
-      const nameCheck = await checkSensorName(buildName);
-      if (nameCheck.exists) {
-        setConfirmRevokeOpen(true);
-        return;
-      }
-    } catch {
-      // Ignore check failures, proceed with build
-    }
-
-    startBuild();
-  };
-
-  const startBuild = async () => {
-    setConfirmRevokeOpen(false);
     setBuildInProgress(true);
     setBuildLog([]);
     setBuildDownloadId(null);
@@ -957,21 +939,6 @@ export default function Interfaces() {
         </DialogContent>
       </Dialog>
 
-      {/* Revoke Certificate Confirmation Dialog */}
-      <Dialog open={confirmRevokeOpen} onOpenChange={setConfirmRevokeOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Certificate Already Exists</DialogTitle>
-            <DialogDescription>
-              A certificate for &lsquo;{buildName}&rsquo; already exists. Building will revoke the old certificate and issue a new one.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmRevokeOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={startBuild}>Revoke &amp; Rebuild</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

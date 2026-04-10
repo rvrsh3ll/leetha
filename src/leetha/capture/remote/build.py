@@ -260,22 +260,39 @@ class SensorBuilder:
                     issue_cert, revoke_cert, list_certs,
                 )
 
-                # Revoke existing cert if present
-                try:
-                    certs = list_certs(self.ca_dir)
-                    for c in certs:
-                        if c["name"] == request.name and not c["revoked"]:
-                            revoke_cert(self.ca_dir, request.name)
-                            await emit("certs", f"Revoked existing certificate for {request.name}")
-                            break
-                except Exception:
-                    pass
-
                 build_dir.mkdir(parents=True, exist_ok=True)
-                cert_path, key_path = issue_cert(self.ca_dir, request.name, build_dir)
+
+                # Reuse existing cert if available, otherwise issue new one
+                existing_cert = build_dir / f"{request.name}.crt"
+                existing_key = build_dir / f"{request.name}.key"
+                has_existing = existing_cert.exists() and existing_key.exists()
+
+                if not has_existing:
+                    # Check if cert was issued before but files aren't in build dir
+                    try:
+                        certs = list_certs(self.ca_dir)
+                        has_active = any(
+                            c["name"] == request.name and not c["revoked"]
+                            for c in certs
+                        )
+                    except Exception:
+                        has_active = False
+
+                    if has_active:
+                        # Cert exists in registry but not in build dir — re-issue
+                        # (revoke old, issue new so files are in build_dir)
+                        revoke_cert(self.ca_dir, request.name)
+
+                    cert_path, key_path = issue_cert(self.ca_dir, request.name, build_dir)
+                    await emit("certs", f"Issued certificate for {request.name}")
+                else:
+                    cert_path = existing_cert
+                    key_path = existing_key
+                    await emit("certs", f"Reusing existing certificate for {request.name}")
+
                 ca_cert_path = build_dir / "ca.crt"
                 shutil.copy2(self.ca_dir / "ca.crt", ca_cert_path)
-                await emit("certs", "Certificates generated")
+                await emit("certs", "Certificates ready")
 
                 # Step 2: Generate embedded.rs
                 await emit("config", "Embedding configuration...")
