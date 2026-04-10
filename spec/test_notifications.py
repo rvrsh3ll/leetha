@@ -57,6 +57,7 @@ async def test_notify_sends_above_min_severity(finding):
     await d.send(finding)
     assert len(calls) == 1, (
         f"send() made {len(calls)} calls. "
+        f"debug={getattr(d, '_send_debug', 'NOT_SET')}, "
         f"d._urls={d._urls}, d._min_level={d._min_level}, "
         f"d._recent={d._recent}, "
         f"finding.severity={finding.severity!r}, sev_str={sev_str!r}, "
