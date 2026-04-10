@@ -109,7 +109,8 @@ async def build_sensor(body: BuildRequestBody):
     data_dir = _get_data_dir()
     ca_dir = data_dir / "ca"
     if not (ca_dir / "ca.crt").exists():
-        raise HTTPException(400, "CA not initialized. Run: leetha remote ca init")
+        from leetha.capture.remote.ca import init_ca
+        init_ca(ca_dir)
 
     # Find sensor directory relative to leetha package
     sensor_dir = Path(__file__).resolve().parents[4] / "sensor"
