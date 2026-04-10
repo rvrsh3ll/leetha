@@ -28,10 +28,13 @@ Detailed walkthrough: [Getting Started](Getting-Started.md)
 - [Fingerprint Sources](Fingerprint-Sources.md) -- The 12 upstream databases and the PatternLoader pipeline
 - [Passive Network Discovery](Passive-Network-Discovery.md) -- Processor-based evidence extraction from ambient traffic
 - [Active Probing](Active-Probing.md) -- ServiceProbe interface, ServiceConnection, identify() method
+- [PCAP Import](PCAP-Import.md) -- Import captured traffic for offline analysis through the fingerprinting pipeline
 - [Web Dashboard](Web-Dashboard.md) -- React frontend pages, REST API, WebSocket events
 - [Attack Surface Analysis](Attack-Surface-Analysis.md) -- FindingRules, chain activation, tool command templates
 - [Interface Types & VPN Capture](Interface-Types-VPN-Capture.md) -- NetworkAdapter, AdapterConfig, scan_adapters
 - [Spoofing Detection](Spoofing-Detection.md) -- AddressVerifier, addr_conflict finding, trusted binding management
+- [Authentication](Authentication.md) -- Token-based API security, roles, and token management
+- [Notifications](Notifications.md) -- Alert notifications via Apprise (Slack, email, webhooks, 80+ services)
 
 ---
 

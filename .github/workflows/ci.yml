@@ -117,7 +117,7 @@ jobs:
           /tmp/leetha-venv/bin/pip install .
           fpm -s dir -t deb \
             --name leetha \
-            --version 0.1.0 \
+            --version 1.0.0 \
             --architecture amd64 \
             --depends python3 \
             --depends libpcap0.8 \
@@ -155,7 +155,7 @@ jobs:
           /tmp/leetha-venv/bin/pip install .
           fpm -s dir -t rpm \
             --name leetha \
-            --version 0.1.0 \
+            --version 1.0.0 \
             --architecture x86_64 \
             --depends python3 \
             --depends libpcap \

@@ -1665,6 +1665,18 @@ async def api_incident_detail(incident_id: str):
     }
 
 
+@fastapi_app.get("/api/version")
+async def api_version():
+    """Return the current Leetha version."""
+    from leetha import __version__
+    import platform
+    return {
+        "version": __version__,
+        "python": platform.python_version(),
+        "platform": platform.system(),
+    }
+
+
 @fastapi_app.get("/api/stats")
 async def api_stats():
     if not app_instance or not getattr(app_instance, "_running", False):

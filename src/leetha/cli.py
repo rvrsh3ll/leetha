@@ -18,6 +18,7 @@ def parse_interface_arg(spec: str) -> tuple[str, str, str | None]:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from leetha import __version__
     parser = argparse.ArgumentParser(
         prog="leetha",
         description="Passive network device discovery and fingerprinting",
@@ -37,6 +38,11 @@ console commands:
   start web                      Launch web dashboard
   start cli                      Launch live packet stream
 """,
+    )
+    parser.add_argument(
+        "-V", "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "-i", "--interface",

@@ -4,9 +4,11 @@
 
 ### Passive Network Fingerprinting and Analysis Engine
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/tjnull/leetha/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tjnull/leetha/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/tjnull/leetha/releases)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Tests](https://img.shields.io/badge/tests-531%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-551%20passing-brightgreen.svg)](#testing)
 
 </div>
 
@@ -20,12 +22,16 @@
 
 - **Passive-first design** -- identifies devices without sending a single packet; active probing is optional
 - **Multi-evidence fusion** -- weighted certainty scoring across 15+ protocol sources with agreement boosting when independent sources corroborate
+- **mDNS SRV target extraction** -- captures device hostnames, service ports, model names, and HomeKit categories from SRV/TXT records
+- **Infrastructure-aware mDNS filtering** -- automatically detects routers/gateways/APs and suppresses forwarded multicast that would pollute device identity
 - **30 protocol banner matchers** -- passively reads service banners (SSH, MySQL, SMB, RDP, MQTT, RTSP, and more) from observed traffic
 - **315 active probe plugins** -- protocol-specific request/response parsing, not just banner grabs
-- **11.5 million fingerprint signatures** -- synced from 12 upstream databases including IEEE OUI, Huginn-Muninn, p0f, JA3/JA4
-- **Real-time web dashboard** -- host inventory, detection triage, network topology, and attack surface analysis via WebSocket
+- **11.5 million fingerprint signatures** -- synced from 12 upstream databases including IEEE OUI, Huginn-Muninn, Satori, p0f, JA3/JA4
+- **Real-time web dashboard** -- host inventory with numeric IP sorting, live packet stream, network topology, and attack surface analysis via WebSocket
+- **PCAP import** -- import captured traffic from Wireshark or tcpdump for offline analysis through the full fingerprinting pipeline
 - **Behavioral detection** -- DNS vendor affinity drift, identity shift alerts, MAC spoofing detection, DHCP anomaly analysis
 - **OT / ICS / SCADA support** -- passive identification of Modbus, BACnet, EtherNet/IP, CoAP, MQTT, and industrial device fingerprinting
+- **Auth & notifications** -- token-based API authentication with role-based access control; alert notifications via Apprise (Slack, email, webhooks, and 80+ services)
 
 ## How It Works
 
