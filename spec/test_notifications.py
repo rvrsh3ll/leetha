@@ -1,7 +1,6 @@
 """Tests for notification dispatcher."""
 import types
 import pytest
-from unittest.mock import AsyncMock
 from leetha.store.models import Finding, FindingRule, AlertSeverity
 
 
@@ -15,31 +14,31 @@ def finding():
     )
 
 
-def _make_fake_apprise():
-    """Create a simple namespace with an AsyncMock async_notify."""
-    fake = types.SimpleNamespace()
-    fake.async_notify = AsyncMock(return_value=True)
-    return fake
-
-
 async def test_notify_skips_below_min_severity(finding):
     """Notifications below min severity are silently skipped."""
     from leetha.notifications import NotificationDispatcher
     d = NotificationDispatcher(urls=["json://localhost"], min_severity="high")
-    fake = _make_fake_apprise()
-    d._apprise = fake
+    calls = []
+    async def fake_notify(**kwargs):
+        calls.append(kwargs)
+    d._apprise = types.SimpleNamespace(async_notify=fake_notify)
     await d.send(finding)
-    fake.async_notify.assert_not_called()
+    assert len(calls) == 0, f"Expected 0 calls, got {len(calls)}"
 
 
 async def test_notify_sends_above_min_severity(finding):
     """Findings at or above min severity trigger notification."""
     from leetha.notifications import NotificationDispatcher
     d = NotificationDispatcher(urls=["json://localhost"], min_severity="warning")
-    fake = _make_fake_apprise()
+
+    # Track calls with a simple list instead of relying on AsyncMock internals
+    calls = []
+    async def fake_notify(**kwargs):
+        calls.append(kwargs)
+    fake = types.SimpleNamespace(async_notify=fake_notify)
     d._apprise = fake
     await d.send(finding)
-    fake.async_notify.assert_called_once()
+    assert len(calls) == 1, f"Expected 1 call, got {len(calls)}"
 
 
 async def test_notify_skips_when_no_urls():
@@ -59,11 +58,13 @@ async def test_notify_rate_limits(finding):
     """Same rule+MAC within cooldown window is suppressed."""
     from leetha.notifications import NotificationDispatcher
     d = NotificationDispatcher(urls=["json://localhost"], min_severity="info")
-    fake = _make_fake_apprise()
-    d._apprise = fake
+    calls = []
+    async def fake_notify(**kwargs):
+        calls.append(kwargs)
+    d._apprise = types.SimpleNamespace(async_notify=fake_notify)
     await d.send(finding)
     await d.send(finding)  # duplicate within cooldown
-    assert fake.async_notify.call_count == 1
+    assert len(calls) == 1, f"Expected 1 call, got {len(calls)}"
 
 
 async def test_format_message(finding):
