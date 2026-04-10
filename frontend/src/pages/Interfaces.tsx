@@ -192,6 +192,7 @@ export default function Interfaces() {
   const [buildLog, setBuildLog] = useState<Array<{ stage: string; message: string }>>([]);
   const [buildDownloadId, setBuildDownloadId] = useState<string | null>(null);
   const [buildDownloadFilename, setBuildDownloadFilename] = useState("leetha-sensor");
+  const [confirmRevokeOpen, setConfirmRevokeOpen] = useState(false);
   const buildLogRef = useRef<HTMLDivElement>(null);
 
   // Auto-select first server address
@@ -251,14 +252,18 @@ export default function Interfaces() {
     try {
       const nameCheck = await checkSensorName(buildName);
       if (nameCheck.exists) {
-        if (!confirm(`A certificate for '${buildName}' already exists. Building will revoke the old certificate and issue a new one. Continue?`)) {
-          return;
-        }
+        setConfirmRevokeOpen(true);
+        return;
       }
     } catch {
       // Ignore check failures, proceed with build
     }
 
+    startBuild();
+  };
+
+  const startBuild = async () => {
+    setConfirmRevokeOpen(false);
     setBuildInProgress(true);
     setBuildLog([]);
     setBuildDownloadId(null);
@@ -774,7 +779,7 @@ export default function Interfaces() {
 
       {/* Build Sensor Dialog */}
       <Dialog open={buildDialogOpen} onOpenChange={(open) => { if (!open && !buildInProgress) setBuildDialogOpen(false); }}>
-        <DialogContent className="max-w-5xl w-[95vw] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[98vw] max-w-[98vw] h-[90vh] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Build Sensor Binary</DialogTitle>
             <DialogDescription>
@@ -857,10 +862,10 @@ export default function Interfaces() {
               </div>
             </div>
           ) : (
-            <div className="space-y-3 py-2">
+            <div className="flex-1 min-h-0 flex flex-col py-2">
               <div
                 ref={buildLogRef}
-                className="h-[60vh] overflow-y-auto rounded-lg bg-black p-5 font-mono text-sm leading-relaxed space-y-1 border border-border"
+                className="flex-1 min-h-0 overflow-y-auto rounded-lg bg-black p-5 font-mono text-sm leading-relaxed space-y-1 border border-border"
               >
                 {buildLog.map((entry, i) => (
                   <div
@@ -945,6 +950,22 @@ export default function Interfaces() {
                 </Button>
               </>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revoke Certificate Confirmation Dialog */}
+      <Dialog open={confirmRevokeOpen} onOpenChange={setConfirmRevokeOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Certificate Already Exists</DialogTitle>
+            <DialogDescription>
+              A certificate for &lsquo;{buildName}&rsquo; already exists. Building will revoke the old certificate and issue a new one.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmRevokeOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={startBuild}>Revoke &amp; Rebuild</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
