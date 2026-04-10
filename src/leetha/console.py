@@ -515,6 +515,29 @@ class LeethaConsole:
             )
         self.console.print()
 
+        # Remote sensor status
+        self.console.print(
+            "[bold white]Remote Sensors[/bold white]  [dim]─[/dim]  "
+            "[dim]sensor listener on port[/dim] [bold]8443[/bold]"
+        )
+        if self.app and hasattr(self.app, '_remote_sensor_manager'):
+            sensor_count = len(self.app._remote_sensor_manager.sensors)
+            if sensor_count > 0:
+                self.console.print(
+                    f"  [green]\u25cf[/green] [bold]{sensor_count}[/bold] sensor(s) connected  "
+                    "[dim]─[/dim]  [bold cyan]sensors[/bold cyan] [dim]to view details[/dim]"
+                )
+            else:
+                self.console.print(
+                    "  [dim]No sensors connected. Build a sensor from the web UI or use[/dim] "
+                    "[bold cyan]start web[/bold cyan]"
+                )
+        else:
+            self.console.print(
+                "  [dim]Sensor listener will start when capture begins[/dim]"
+            )
+        self.console.print()
+
     # Helpers
 
     def _count_synced_sources(self) -> int:
