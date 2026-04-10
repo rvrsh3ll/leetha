@@ -826,3 +826,24 @@ export async function updateNotificationSettings(settings: Partial<NotificationS
 export async function testNotification(): Promise<{ status: string; message?: string }> {
   return apiFetch("/api/settings/notifications/test", { method: "POST" });
 }
+
+// --- Remote Sensors ---
+
+export interface RemoteSensor {
+  name: string;
+  remote_ip: string;
+  connected_at: number;
+  uptime: number;
+  packets: number;
+  bytes: number;
+}
+
+export async function fetchRemoteSensors(): Promise<RemoteSensor[]> {
+  return apiFetch<RemoteSensor[]>("/api/remote/sensors");
+}
+
+export async function disconnectRemoteSensor(name: string): Promise<void> {
+  await apiFetch(`/api/remote/sensors/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
+}
