@@ -42,19 +42,50 @@ TARGET_MAP = {
     },
 }
 
-# Map current machine arch to Rust target for native builds
+# Map current machine arch to detect native builds
 _NATIVE_ARCH_MAP = {
-    "x86_64": "x86_64-unknown-linux-musl",
-    "aarch64": "aarch64-unknown-linux-musl",
-    "armv7l": "armv7-unknown-linux-musleabihf",
+    "x86_64": "x86_64",
+    "aarch64": "aarch64",
+    "armv7l": "armv7",
 }
+
+
+def _get_host_triple() -> str | None:
+    """Detect the host Rust target triple."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["rustc", "--version", "--verbose"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.splitlines():
+            if line.startswith("host:"):
+                return line.split(":", 1)[1].strip()
+    except Exception:
+        pass
+    return None
 
 
 def _is_native_target(target: str) -> bool:
     """Return True if the target matches the host architecture."""
     machine = platform.machine()
-    native_triple = _NATIVE_ARCH_MAP.get(machine)
-    return TARGET_MAP[target]["triple"] == native_triple
+    native_prefix = _NATIVE_ARCH_MAP.get(machine)
+    if not native_prefix:
+        return False
+    return TARGET_MAP[target]["triple"].startswith(native_prefix)
+
+
+def _get_build_triple(target: str) -> str:
+    """Get the Rust triple to use for building.
+
+    For native builds, uses the host triple (which may be gnu instead of musl).
+    For cross builds, uses the target triple from TARGET_MAP.
+    """
+    if _is_native_target(target):
+        host = _get_host_triple()
+        if host:
+            return host
+    return TARGET_MAP[target]["triple"]
 
 
 def generate_embedded_rs(
@@ -161,7 +192,7 @@ class SensorBuilder:
                 await progress_callback(stage, message)
 
         target_info = TARGET_MAP[request.target]
-        triple = target_info["triple"]
+        triple = _get_build_triple(request.target)
         binary_name = target_info["binary_name"]
         build_dir = self.sensor_dir / "build"
 
