@@ -50,11 +50,17 @@ async def test_notify_sends_above_min_severity(finding):
 
     # Reset and test through send()
     calls.clear()
+    # Trace severity resolution exactly as send() does it
+    sev_str = finding.severity.value if hasattr(finding.severity, "value") else str(finding.severity)
+    from leetha.notifications import _SEVERITY_ORDER
+    level = _SEVERITY_ORDER.get(sev_str, 0)
     await d.send(finding)
     assert len(calls) == 1, (
         f"send() made {len(calls)} calls. "
         f"d._urls={d._urls}, d._min_level={d._min_level}, "
-        f"d._recent={d._recent}"
+        f"d._recent={d._recent}, "
+        f"finding.severity={finding.severity!r}, sev_str={sev_str!r}, "
+        f"level={level}, passes={level >= d._min_level}"
     )
 
 
