@@ -3,10 +3,9 @@
 
 pub const SENSOR_NAME: &str = "dev-sensor";
 pub const SERVER_ADDR: &str = "127.0.0.1:8443";
-pub const INTERFACE: &str = "eth0";
 pub const BUFFER_SIZE_MB: usize = 100;
 
-// Default empty certs — replaced during production builds.
+// Empty certs for development — replaced with include_bytes! during production builds.
 pub const CA_PEM: &[u8] = b"";
 pub const CERT_PEM: &[u8] = b"";
 pub const KEY_PEM: &[u8] = b"";

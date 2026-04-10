@@ -19,6 +19,10 @@ class SensorSession:
     _buffer: bytearray = field(default_factory=bytearray, repr=False)
     _packet_count: int = 0
     _byte_count: int = 0
+    # Discovered interfaces on the remote device
+    remote_interfaces: list[dict] = field(default_factory=list)
+    # Currently selected capture interfaces (empty = "any")
+    selected_interfaces: list[str] = field(default_factory=list)
 
     def feed(self, data: bytes) -> list[RemotePacketFrame]:
         self._buffer.extend(data)
@@ -35,6 +39,9 @@ class SensorSession:
             self._byte_count += pkt_len
         return frames
 
+    def set_discovered_interfaces(self, interfaces: list[dict]) -> None:
+        self.remote_interfaces = interfaces
+
     def stats(self) -> dict:
         return {
             "name": self.name,
@@ -43,6 +50,8 @@ class SensorSession:
             "uptime": time.time() - self.connected_at,
             "packets": self._packet_count,
             "bytes": self._byte_count,
+            "remote_interfaces": self.remote_interfaces,
+            "selected_interfaces": self.selected_interfaces,
         }
 
 

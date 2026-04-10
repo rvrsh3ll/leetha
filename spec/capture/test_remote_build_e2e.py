@@ -26,37 +26,32 @@ def test_full_embedded_rs_generation(ca_dir, tmp_path):
     build_dir = tmp_path / "build"
     build_dir.mkdir()
 
-    # Issue cert
     cert_path, key_path = issue_cert(ca_dir, "e2e-sensor", build_dir)
     assert cert_path.exists()
     assert key_path.exists()
 
-    # Copy CA cert
     shutil.copy2(ca_dir / "ca.crt", build_dir / "ca.crt")
 
-    # Generate embedded.rs
     rs = generate_embedded_rs(
         name="e2e-sensor",
         server="192.168.1.100:8443",
-        interface="br-lan",
         buffer_mb=10,
         ca_path="../build/ca.crt",
         cert_path="../build/e2e-sensor.crt",
         key_path="../build/e2e-sensor.key",
     )
 
-    # Verify content
     assert 'SENSOR_NAME: &str = "e2e-sensor"' in rs
     assert 'SERVER_ADDR: &str = "192.168.1.100:8443"' in rs
-    assert 'INTERFACE: &str = "br-lan"' in rs
     assert "BUFFER_SIZE_MB: usize = 10" in rs
     assert "include_bytes!" in rs
+    # No interface embedded — sensor defaults to "any"
+    assert "INTERFACE" not in rs
 
-    # Write it and verify it's valid Rust syntax (basic check)
     rs_path = tmp_path / "embedded.rs"
     rs_path.write_text(rs)
     content = rs_path.read_text()
-    assert content.count("pub const") == 7
+    assert content.count("pub const") == 6
 
 
 def test_all_targets_have_consistent_fields():
@@ -75,7 +70,6 @@ def test_build_request_all_targets():
         req = BuildRequest(
             name="test",
             server="1.2.3.4:8443",
-            interface="eth0",
             target=target_id,
             buffer_size_mb=TARGET_MAP[target_id]["default_buffer_mb"],
         )

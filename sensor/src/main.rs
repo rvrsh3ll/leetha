@@ -58,7 +58,7 @@ fn effective_server(args: &Args) -> String {
 fn effective_interface(args: &Args) -> String {
     args.interface
         .clone()
-        .unwrap_or_else(|| embedded::INTERFACE.to_string())
+        .unwrap_or_else(|| "any".to_string())
 }
 
 fn print_version_info(args: &Args) {
@@ -67,7 +67,7 @@ fn print_version_info(args: &Args) {
     eprintln!("leetha-sensor v{}", env!("CARGO_PKG_VERSION"));
     eprintln!("  Sensor name:  {}", embedded::SENSOR_NAME);
     eprintln!("  Server:       {}", server);
-    eprintln!("  Interface:    {}", iface);
+    eprintln!("  Interface:    {} (override with -i)", iface);
     eprintln!("  Buffer:       {} MB", embedded::BUFFER_SIZE_MB);
 }
 
@@ -276,6 +276,28 @@ async fn connect_and_stream(
         "TLS handshake complete, cert: {}",
         embedded::SENSOR_NAME
     );
+
+    // Report available interfaces to central
+    let iface_list = pcap::Device::list()
+        .map(|devs| {
+            devs.iter()
+                .map(|d| {
+                    format!(
+                        "{{\"name\":\"{}\",\"desc\":\"{}\"}}",
+                        d.name,
+                        d.desc.as_deref().unwrap_or("")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_default();
+    let discovery_msg = format!(
+        "{{\"type\":\"discovery\",\"sensor\":\"{}\",\"interfaces\":[{}]}}",
+        embedded::SENSOR_NAME, iface_list
+    );
+    write.send(Message::Text(discovery_msg.into())).await?;
+    info!("reported available interfaces to central");
 
     // Drain ring buffer first (historical packets)
     let buffered = ring.lock().unwrap().drain();

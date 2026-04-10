@@ -37,7 +37,6 @@ def test_generate_embedded_rs():
     rs = generate_embedded_rs(
         name="test-sensor",
         server="10.0.0.1:8443",
-        interface="wlan0",
         buffer_mb=25,
         ca_path="../build/ca.crt",
         cert_path="../build/client.crt",
@@ -45,18 +44,18 @@ def test_generate_embedded_rs():
     )
     assert 'SENSOR_NAME: &str = "test-sensor"' in rs
     assert 'SERVER_ADDR: &str = "10.0.0.1:8443"' in rs
-    assert 'INTERFACE: &str = "wlan0"' in rs
     assert "BUFFER_SIZE_MB: usize = 25" in rs
     assert 'include_bytes!("../build/ca.crt")' in rs
     assert 'include_bytes!("../build/client.crt")' in rs
     assert 'include_bytes!("../build/client.key")' in rs
+    # Interface no longer embedded — sensor defaults to "any"
+    assert "INTERFACE" not in rs
 
 
 def test_generate_embedded_rs_escapes_quotes():
     rs = generate_embedded_rs(
         name='sensor"evil',
         server="10.0.0.1:8443",
-        interface="eth0",
         buffer_mb=100,
         ca_path="../build/ca.crt",
         cert_path="../build/client.crt",
@@ -69,7 +68,6 @@ def test_build_request_validation():
     req = BuildRequest(
         name="pi-sensor",
         server="10.0.0.5:8443",
-        interface="eth0",
         target="linux-arm64",
         buffer_size_mb=50,
     )
@@ -82,7 +80,6 @@ def test_build_request_invalid_target():
         BuildRequest(
             name="test",
             server="1.2.3.4:8443",
-            interface="eth0",
             target="freebsd-arm",
             buffer_size_mb=50,
         )

@@ -11,12 +11,14 @@ import {
   fetchRemoteSensors,
   disconnectRemoteSensor,
   fetchBuildTargets,
+  fetchServerAddresses,
   checkSensorName,
   type NetworkInterface,
   type ProbeInfo,
   type RemoteSensor,
   type BuildTarget,
   type BuildRequestBody,
+  type ServerAddress,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -161,13 +163,15 @@ export default function Interfaces() {
     queryFn: fetchBuildTargets,
   });
 
+  const { data: serverAddresses = [] } = useQuery({
+    queryKey: ["server-addresses"],
+    queryFn: fetchServerAddresses,
+  });
+
   // Build sensor state
   const [buildDialogOpen, setBuildDialogOpen] = useState(false);
   const [buildName, setBuildName] = useState("");
-  const [buildServer, setBuildServer] = useState(
-    typeof window !== "undefined" ? `${window.location.hostname}:8443` : "127.0.0.1:8443"
-  );
-  const [buildInterface, setBuildInterface] = useState("eth0");
+  const [buildServer, setBuildServer] = useState("");
   const [buildTarget, setBuildTarget] = useState("linux-x86_64");
   const [buildBufferMb, setBuildBufferMb] = useState(100);
   const [buildInProgress, setBuildInProgress] = useState(false);
@@ -175,6 +179,13 @@ export default function Interfaces() {
   const [buildDownloadId, setBuildDownloadId] = useState<string | null>(null);
   const [buildDownloadFilename, setBuildDownloadFilename] = useState("leetha-sensor");
   const buildLogRef = useRef<HTMLDivElement>(null);
+
+  // Auto-select first server address
+  useEffect(() => {
+    if (serverAddresses.length > 0 && !buildServer) {
+      setBuildServer(`${serverAddresses[0].address}:8443`);
+    }
+  }, [serverAddresses, buildServer]);
 
   // Auto-scroll build log
   useEffect(() => {
@@ -215,7 +226,6 @@ export default function Interfaces() {
     const body: BuildRequestBody = {
       name: buildName,
       server: buildServer,
-      interface: buildInterface,
       target: buildTarget,
       buffer_size_mb: buildBufferMb,
     };
@@ -605,6 +615,28 @@ export default function Interfaces() {
                       </Button>
                     </div>
                   </div>
+
+                  {/* Discovered interfaces */}
+                  {sensor.remote_interfaces && sensor.remote_interfaces.length > 0 && (
+                    <div className="border-t border-border px-5 py-3">
+                      <p className="text-[11px] text-muted-foreground mb-2">Discovered Interfaces</p>
+                      <div className="flex flex-wrap gap-2">
+                        {sensor.remote_interfaces.map((iface) => (
+                          <Badge
+                            key={iface.name}
+                            variant="outline"
+                            className="text-[11px] font-mono"
+                          >
+                            {iface.name}
+                            {iface.desc ? ` — ${iface.desc}` : ""}
+                          </Badge>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-2">
+                        Capturing on: <span className="text-foreground">all interfaces (any)</span>
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -668,22 +700,22 @@ export default function Interfaces() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="build-server">Server Address (IP:PORT)</Label>
-                <Input
-                  id="build-server"
-                  placeholder="10.0.0.5:8443"
+                <Label>Server Address</Label>
+                <Select
                   value={buildServer}
-                  onChange={(e) => setBuildServer(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="build-iface">Capture Interface</Label>
-                <Input
-                  id="build-iface"
-                  placeholder="eth0"
-                  value={buildInterface}
-                  onChange={(e) => setBuildInterface(e.target.value)}
-                />
+                  onValueChange={(val) => setBuildServer(val)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select server address" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {serverAddresses.map((addr) => (
+                      <SelectItem key={`${addr.interface}-${addr.address}`} value={`${addr.address}:8443`}>
+                        {addr.address}:8443 ({addr.interface})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Target Platform</Label>

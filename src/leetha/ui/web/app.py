@@ -2739,10 +2739,32 @@ async def ws_remote_sensor(websocket: WebSocket):
 
     try:
         while True:
-            data = await websocket.receive_bytes()
+            msg = await websocket.receive()
+
+            # Text messages = control/discovery (JSON)
+            if "text" in msg:
+                try:
+                    import json as _json
+                    payload = _json.loads(msg["text"])
+                    msg_type = payload.get("type")
+                    if msg_type == "discovery":
+                        ifaces = payload.get("interfaces", [])
+                        session.set_discovered_interfaces(ifaces)
+                        logger.info(
+                            "sensor %s reported %d interfaces",
+                            sensor_name, len(ifaces),
+                        )
+                except Exception:
+                    pass
+                continue
+
+            # Binary messages = packet frames
+            data = msg.get("bytes", b"")
+            if not data:
+                continue
+
             frames = session.feed(data)
             for frame in frames:
-                # Run through the capture engine's classifier
                 try:
                     pkt = Ether(frame.packet)
                     iface_label = f"remote:{sensor_name}"
@@ -2751,7 +2773,7 @@ async def ws_remote_sensor(websocket: WebSocket):
                         result.interface = iface_label
                         app_instance.packet_queue.put_nowait(result)
                 except Exception:
-                    pass  # Skip unparseable frames
+                    pass
     except WebSocketDisconnect:
         logger.info("remote sensor disconnected: %s", sensor_name)
     except Exception:

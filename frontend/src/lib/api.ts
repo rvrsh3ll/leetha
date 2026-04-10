@@ -829,6 +829,11 @@ export async function testNotification(): Promise<{ status: string; message?: st
 
 // --- Remote Sensors ---
 
+export interface RemoteSensorInterface {
+  name: string;
+  desc?: string;
+}
+
 export interface RemoteSensor {
   name: string;
   remote_ip: string;
@@ -836,6 +841,8 @@ export interface RemoteSensor {
   uptime: number;
   packets: number;
   bytes: number;
+  remote_interfaces: RemoteSensorInterface[];
+  selected_interfaces: string[];
 }
 
 export async function fetchRemoteSensors(): Promise<RemoteSensor[]> {
@@ -860,13 +867,21 @@ export interface BuildTarget {
 export interface BuildRequestBody {
   name: string;
   server: string;
-  interface: string;
   target: string;
   buffer_size_mb: number;
 }
 
+export interface ServerAddress {
+  interface: string;
+  address: string;
+}
+
 export async function fetchBuildTargets(): Promise<BuildTarget[]> {
   return apiFetch<BuildTarget[]>("/api/remote/targets");
+}
+
+export async function fetchServerAddresses(): Promise<ServerAddress[]> {
+  return apiFetch<ServerAddress[]>("/api/remote/server-addresses");
 }
 
 export async function checkBuildPrerequisites(target: string): Promise<{ ok: boolean; message: string }> {

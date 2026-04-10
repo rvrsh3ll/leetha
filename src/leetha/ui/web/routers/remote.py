@@ -85,6 +85,14 @@ async def list_sensors():
     return manager.list_sensors()
 
 
+@router.get("/sensors/{name}")
+async def get_sensor(name: str):
+    manager = _get_manager()
+    if name not in manager.sensors:
+        raise HTTPException(404, f"Sensor '{name}' not found")
+    return manager.sensors[name].stats()
+
+
 @router.delete("/sensors/{name}")
 async def disconnect_sensor(name: str):
     manager = _get_manager()
@@ -95,6 +103,30 @@ async def disconnect_sensor(name: str):
 
 
 # --- Build Endpoints ---
+
+@router.get("/server-addresses")
+async def list_server_addresses():
+    """List IP addresses available on the leetha server for sensor connections."""
+    from leetha.ui.web.app import app_instance
+    if not app_instance:
+        raise HTTPException(503, "App not initialized")
+
+    import psutil
+    addresses = []
+    for name, addrs in psutil.net_if_addrs().items():
+        for addr in addrs:
+            if addr.family.name == "AF_INET" and addr.address != "127.0.0.1":
+                addresses.append({
+                    "interface": name,
+                    "address": addr.address,
+                })
+            elif addr.family.name == "AF_INET6" and not addr.address.startswith("fe80") and addr.address != "::1":
+                addresses.append({
+                    "interface": name,
+                    "address": addr.address,
+                })
+    return addresses
+
 
 @router.get("/targets")
 async def list_targets():
@@ -145,7 +177,6 @@ async def check_sensor_name(name: str = Query(...)):
 class BuildRequestBody(BaseModel):
     name: str
     server: str
-    interface: str = "eth0"
     target: str = "linux-x86_64"
     buffer_size_mb: int = 100
 
@@ -174,7 +205,6 @@ async def build_sensor(body: BuildRequestBody):
     request = BuildRequest(
         name=body.name,
         server=body.server,
-        interface=body.interface,
         target=body.target,
         buffer_size_mb=body.buffer_size_mb,
     )
