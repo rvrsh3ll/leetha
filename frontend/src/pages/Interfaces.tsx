@@ -36,6 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -376,79 +377,34 @@ export default function Interfaces() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <p className="text-sm text-muted-foreground max-w-xl">
-          Select which network interfaces to capture on. Changes take effect immediately.
-        </p>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>{interfaces.length} detected</span>
-          <span>&middot;</span>
-          <span className={capturingCount > 0 ? "text-success" : ""}>{capturingCount} capturing</span>
-        </div>
-      </div>
-
-      {/* Remote Sensors */}
-      <div className="rounded-xl bg-card border border-border overflow-hidden">
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-border">
-          <Radio size={16} className="text-violet-400" />
-          <div>
-            <h3 className="text-sm font-semibold">Remote Sensors</h3>
-            <p className="text-[11px] text-muted-foreground">Persistent packet capture agents streaming over WebSocket</p>
-          </div>
-          <div className="ml-auto flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">{sensors.length} connected</span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs h-7 gap-1.5"
-              onClick={() => setBuildDialogOpen(true)}
-            >
-              <Hammer size={12} />
-              Build Sensor
-            </Button>
+      <Tabs defaultValue="local" className="w-full">
+        <div className="flex items-center justify-between">
+          <TabsList>
+            <TabsTrigger value="local" className="gap-1.5">
+              <Cable size={14} />
+              Local Adapters
+              <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1.5">{interfaces.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="remote" className="gap-1.5">
+              <Radio size={14} />
+              Remote Sensors
+              {sensors.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1.5">{sensors.length}</Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className={capturingCount > 0 ? "text-success" : ""}>{capturingCount} capturing</span>
           </div>
         </div>
-        {sensors.length === 0 ? (
-          <div className="px-5 py-6 text-center text-muted-foreground text-sm">
-            No remote sensors connected. Use <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">leetha remote ca issue</code> to set up a sensor.
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {sensors.map((sensor) => (
-              <div key={sensor.name} className="flex items-center justify-between px-5 py-4 gap-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-2 w-2 rounded-full bg-success shrink-0" />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm">{sensor.name}</span>
-                      <Badge variant="outline" className="text-[10px] uppercase font-semibold text-violet-400 border-violet-400/30">
-                        REMOTE
-                      </Badge>
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {sensor.remote_ip} &middot; {Math.floor(sensor.uptime / 60)}m uptime
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
-                  <span>{sensor.packets.toLocaleString()} pkts</span>
-                  <span>{(sensor.bytes / 1024 / 1024).toFixed(1)} MB</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs h-7 text-destructive hover:text-destructive"
-                    onClick={() => handleDisconnectSensor(sensor.name)}
-                  >
-                    Disconnect
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {interfaces.length === 0 ? (
+        {/* Local Adapters Tab */}
+        <TabsContent value="local" className="space-y-6 mt-4">
+          <p className="text-sm text-muted-foreground">
+            Select which network interfaces to capture on. Changes take effect immediately.
+          </p>
+
+          {interfaces.length === 0 ? (
         <div className="rounded-xl bg-card border border-border flex flex-col items-center justify-center py-16 text-muted-foreground">
           <WifiOff size={32} className="mb-2" />
           <p className="font-medium">No interfaces detected</p>
@@ -592,6 +548,69 @@ export default function Interfaces() {
           })}
         </div>
       )}
+        </TabsContent>
+
+        {/* Remote Sensors Tab */}
+        <TabsContent value="remote" className="space-y-6 mt-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Persistent packet capture agents streaming over WebSocket.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7 gap-1.5"
+              onClick={() => setBuildDialogOpen(true)}
+            >
+              <Hammer size={12} />
+              Build Sensor
+            </Button>
+          </div>
+
+          {sensors.length === 0 ? (
+            <div className="rounded-xl bg-card border border-border flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <Radio size={32} className="mb-2" />
+              <p className="font-medium">No remote sensors connected</p>
+              <p className="text-xs mt-1">Build and deploy a sensor, or use <code className="bg-secondary px-1.5 py-0.5 rounded">leetha remote ca issue</code> to set up manually.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {sensors.map((sensor) => (
+                <div key={sensor.name} className="rounded-xl bg-card border border-border overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-2 w-2 rounded-full bg-success shrink-0" />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm">{sensor.name}</span>
+                          <Badge variant="outline" className="text-[10px] uppercase font-semibold text-violet-400 border-violet-400/30">
+                            REMOTE
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {sensor.remote_ip} &middot; {Math.floor(sensor.uptime / 60)}m uptime
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
+                      <span>{sensor.packets.toLocaleString()} pkts</span>
+                      <span>{(sensor.bytes / 1024 / 1024).toFixed(1)} MB</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7 text-destructive hover:text-destructive"
+                        onClick={() => handleDisconnectSensor(sensor.name)}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Probe Dialog */}
       <Dialog
