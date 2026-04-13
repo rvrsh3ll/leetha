@@ -556,6 +556,9 @@ def main():
                 host=args.host,
                 port=args.port,
                 force_auth=args.force_auth,
+                tls=not args.no_tls,
+                tls_cert=args.tls_cert or "",
+                tls_key=args.tls_key or "",
             )
         except (KeyboardInterrupt, SystemExit):
             print("\033[32m[+] Leetha stopped\033[0m")
@@ -633,6 +636,9 @@ def main():
                 host=args.host,
                 port=args.port,
                 force_auth=args.force_auth,
+                tls=not args.no_tls,
+                tls_cert=args.tls_cert or "",
+                tls_key=args.tls_key or "",
             )
         except (KeyboardInterrupt, SystemExit):
             print("\033[32m[+] Leetha stopped\033[0m")
