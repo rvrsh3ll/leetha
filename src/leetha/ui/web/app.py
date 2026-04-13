@@ -3675,7 +3675,7 @@ async def ws_remote_sensor(websocket: WebSocket):
 
 # --- Entry Point ---
 
-def run_web(interfaces: list | None = None, host: str = "0.0.0.0", port: int = 8080, app: LeethaApp | None = None, force_auth=None):
+def run_web(interfaces: list | None = None, host: str = "0.0.0.0", port: int = 8080, app: LeethaApp | None = None, force_auth=None, tls: bool = True, tls_cert: str = "", tls_key: str = ""):
     """Start the web UI server (blocking — creates its own event loop).
 
     The LeethaApp is constructed in a background thread to avoid blocking
@@ -3749,10 +3749,29 @@ def run_web(interfaces: list | None = None, host: str = "0.0.0.0", port: int = 8
         init_thread = threading.Thread(target=_init_app, daemon=True)
         init_thread.start()
 
-    uvicorn.run(_wrapped_app, host=host, port=port, log_level="info")
+    ssl_certfile = None
+    ssl_keyfile = None
+    if tls:
+        if tls_cert and tls_key:
+            ssl_certfile = tls_cert
+            ssl_keyfile = tls_key
+        else:
+            from leetha.capture.remote.ca import ensure_web_cert
+            from leetha.config import get_config
+            ca_dir = get_config().data_dir / "ca"
+            cert_path, key_path = ensure_web_cert(ca_dir)
+            ssl_certfile = str(cert_path)
+            ssl_keyfile = str(key_path)
+        scheme = "https"
+    else:
+        scheme = "http"
+
+    logger.info("Leetha web UI: %s://%s:%d", scheme, host, port)
+    uvicorn.run(_wrapped_app, host=host, port=port, log_level="info",
+                ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile)
 
 
-async def run_web_async(interfaces: list | None = None, host: str = "0.0.0.0", port: int = 8080, app: LeethaApp | None = None, force_auth=None):
+async def run_web_async(interfaces: list | None = None, host: str = "0.0.0.0", port: int = 8080, app: LeethaApp | None = None, force_auth=None, tls: bool = True, tls_cert: str = "", tls_key: str = ""):
     """Start the web UI server within an existing event loop."""
     global app_instance, _auth_enabled
     from leetha.auth.middleware import check_auth_required
@@ -3772,7 +3791,22 @@ async def run_web_async(interfaces: list | None = None, host: str = "0.0.0.0", p
             rc.print("\n[bold green]Admin token is active.[/bold green]")
             rc.print("[dim]To view token use: leetha auth show-token[/dim]\n")
 
-    config = uvicorn.Config(_wrapped_app, host=host, port=port, log_level="info")
+    ssl_certfile = None
+    ssl_keyfile = None
+    if tls:
+        if tls_cert and tls_key:
+            ssl_certfile = tls_cert
+            ssl_keyfile = tls_key
+        else:
+            from leetha.capture.remote.ca import ensure_web_cert
+            from leetha.config import get_config
+            ca_dir = get_config().data_dir / "ca"
+            cert_path, key_path = ensure_web_cert(ca_dir)
+            ssl_certfile = str(cert_path)
+            ssl_keyfile = str(key_path)
+
+    config = uvicorn.Config(_wrapped_app, host=host, port=port, log_level="info",
+                            ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile)
     server = uvicorn.Server(config)
     await server.serve()
 
