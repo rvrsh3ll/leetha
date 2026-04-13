@@ -264,6 +264,49 @@ async def run_query(request: Request):
         return JSONResponse(status_code=400, content={"error": str(e)})
 
 
+@router.get("/api/settings/browse")
+async def browse_filesystem(request: Request):
+    """List directory contents for the file browser dialog."""
+    import os
+    from pathlib import Path as _Path
+
+    raw_path = request.query_params.get("path", "")
+    target = _Path(raw_path) if raw_path else _Path.home()
+
+    # Resolve to absolute
+    try:
+        target = target.resolve()
+    except (OSError, ValueError):
+        return JSONResponse(status_code=400, content={"error": "Invalid path"})
+
+    if not target.is_dir():
+        return JSONResponse(status_code=400, content={"error": "Not a directory"})
+
+    entries: list[dict] = []
+    try:
+        for item in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+            # Skip hidden files unless they start with .leetha
+            if item.name.startswith(".") and not item.name.startswith(".leetha"):
+                continue
+            try:
+                entries.append({
+                    "name": item.name,
+                    "path": str(item),
+                    "is_dir": item.is_dir(),
+                    "size": item.stat().st_size if item.is_file() else None,
+                })
+            except (PermissionError, OSError):
+                continue
+    except PermissionError:
+        return JSONResponse(status_code=403, content={"error": "Permission denied"})
+
+    return {
+        "current": str(target),
+        "parent": str(target.parent) if target != target.parent else None,
+        "entries": entries,
+    }
+
+
 @router.delete("/api/settings/db")
 async def clear_database():
     from leetha.ui.web.app import app_instance

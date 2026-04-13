@@ -847,6 +847,17 @@ export async function importSettings(data: Record<string, unknown>): Promise<Lee
   return apiFetch("/api/settings/import", { method: "POST", body: JSON.stringify(data) });
 }
 
+export interface BrowseResult {
+  current: string;
+  parent: string | null;
+  entries: { name: string; path: string; is_dir: boolean; size: number | null }[];
+}
+
+export async function browseFilesystem(path?: string): Promise<BrowseResult> {
+  const params = path ? `?path=${encodeURIComponent(path)}` : "";
+  return apiFetch(`/api/settings/browse${params}`);
+}
+
 export async function fetchDbInfo(): Promise<DbInfo> {
   return apiFetch("/api/settings/db-info");
 }
