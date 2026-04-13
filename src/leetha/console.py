@@ -984,12 +984,15 @@ class LeethaConsole:
                 self._error("[bold]--host[/bold] requires a value")
                 return
 
+        use_tls = "--no-tls" not in args
+
         if not await self._ensure_capture():
             return
 
-        self._info(f"Web dashboard at [bold cyan]http://{host}:{port}[/bold cyan] — [bold]Ctrl+C[/bold] to return")
+        scheme = "https" if use_tls else "http"
+        self._info(f"Web dashboard at [bold cyan]{scheme}://{host}:{port}[/bold cyan] — [bold]Ctrl+C[/bold] to return")
         try:
-            await run_web_async(host=host, port=port, app=self.app)
+            await run_web_async(host=host, port=port, app=self.app, tls=use_tls)
         except (KeyboardInterrupt, asyncio.CancelledError):
             pass
         self.console.print()
