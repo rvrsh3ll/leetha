@@ -226,13 +226,13 @@ class LeethaApp:
         # Periodic unsnooze of expired snoozed findings
         async def _unsnooze_loop():
             while True:
-                await asyncio.sleep(30)
+                await asyncio.sleep(120)
                 try:
                     count = await self.store.findings.unsnooze_expired()
                     if count > 0:
                         logger.info("Unsnoozed %d expired findings", count)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Unsnooze check failed: %s", e)
 
         self._tasks.append(asyncio.create_task(_unsnooze_loop()))
 
