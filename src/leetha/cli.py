@@ -115,6 +115,16 @@ console commands:
         default=False,
         help="Service mode: web UI + auto-capture on saved interfaces, no prompts",
     )
+    parser.add_argument(
+        "--remote",
+        default=None,
+        help="Remote capture via SSH (ssh://user@host[:port])",
+    )
+    parser.add_argument(
+        "--key",
+        default=None,
+        help="SSH private key path for --remote capture",
+    )
 
     sub = parser.add_subparsers(dest="command")
 
@@ -228,12 +238,34 @@ console commands:
         help="Max file size in MB (default: 500)",
     )
 
+    # Remote sensor management
+    remote_parser = sub.add_parser("remote", help="Manage remote packet capture")
+    remote_sub = remote_parser.add_subparsers(dest="remote_action")
+
+    ca_parser = remote_sub.add_parser("ca", help="Certificate authority management")
+    ca_sub = ca_parser.add_subparsers(dest="ca_action")
+
+    ca_sub.add_parser("init", help="Initialize the sensor CA")
+
+    ca_issue = ca_sub.add_parser("issue", help="Issue a client certificate")
+    ca_issue.add_argument("--name", required=True, help="Sensor name (used as cert CN)")
+    ca_issue.add_argument("--out", default=".", help="Output directory for cert/key files")
+
+    ca_revoke = ca_sub.add_parser("revoke", help="Revoke a sensor certificate")
+    ca_revoke.add_argument("--name", required=True, help="Sensor name to revoke")
+
+    ca_sub.add_parser("list", help="List issued certificates")
+
+    # Remote sensor status (non-interactive — queries running leetha via API)
+    remote_sub.add_parser("sensors", help="List connected remote sensors (requires running leetha)")
+    remote_sub.add_parser("builds", help="List sensor build history")
+
     return parser
 
 
 def _needs_capture(args: argparse.Namespace) -> bool:
     """Return True if the selected mode requires packet capture privileges."""
-    return args.command not in ("sync", "override", "patterns", "validate", "probe", "interfaces", "trust", "auth", "import")
+    return args.command not in ("sync", "override", "patterns", "validate", "probe", "interfaces", "trust", "auth", "import", "remote")
 
 
 def _has_capture_privilege() -> bool:
@@ -346,6 +378,120 @@ def main():
         from leetha.cli_import import run_import
         asyncio.run(run_import(args))
         return
+    elif args.command == "remote":
+        from pathlib import Path
+        from leetha.capture.remote.ca import (
+            init_ca, issue_cert, revoke_cert, list_certs, CANotInitialized,
+        )
+        from rich.console import Console
+        from rich.table import Table
+        from leetha.config import get_config
+
+        console = Console()
+        ca_dir = Path(get_config().data_dir) / "ca"
+
+        if args.remote_action == "ca":
+            if args.ca_action == "init":
+                try:
+                    init_ca(ca_dir)
+                    console.print(f"[green]CA initialized in {ca_dir}[/green]")
+                    console.print(f"CA cert: {ca_dir / 'ca.crt'}")
+                except FileExistsError:
+                    console.print("[red]CA already initialized[/red]")
+                    raise SystemExit(1)
+
+            elif args.ca_action == "issue":
+                try:
+                    out = Path(args.out)
+                    cert_path, key_path = issue_cert(ca_dir, args.name, out)
+                    console.print(f"[green]Issued certificate for '{args.name}'[/green]")
+                    console.print(f"  Cert: {cert_path}")
+                    console.print(f"  Key:  {key_path}")
+                    console.print(f"  CA:   {ca_dir / 'ca.crt'}")
+                except (CANotInitialized, ValueError) as e:
+                    console.print(f"[red]{e}[/red]")
+                    raise SystemExit(1)
+
+            elif args.ca_action == "revoke":
+                try:
+                    revoke_cert(ca_dir, args.name)
+                    console.print(f"[green]Revoked certificate '{args.name}'[/green]")
+                except (CANotInitialized, ValueError) as e:
+                    console.print(f"[red]{e}[/red]")
+                    raise SystemExit(1)
+
+            elif args.ca_action == "list":
+                try:
+                    certs = list_certs(ca_dir)
+                except CANotInitialized as e:
+                    console.print(f"[red]{e}[/red]")
+                    raise SystemExit(1)
+                if not certs:
+                    console.print("No certificates issued yet.")
+                else:
+                    table = Table(title="Issued Certificates")
+                    table.add_column("Name")
+                    table.add_column("Issued")
+                    table.add_column("Status")
+                    for c in certs:
+                        status = "[red]REVOKED[/red]" if c["revoked"] else "[green]ACTIVE[/green]"
+                        table.add_row(c["name"], c["issued"][:10], status)
+                    console.print(table)
+            else:
+                parser.parse_args(["remote", "ca", "--help"])
+        elif args.remote_action == "sensors":
+            import aiohttp
+            console = Console()
+            try:
+                async def _list_sensors():
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get("http://localhost:8080/api/remote/sensors") as resp:
+                            if resp.status != 200:
+                                console.print("[red]Failed to query sensors — is leetha running?[/red]")
+                                return
+                            sensors = await resp.json()
+                    if not sensors:
+                        console.print("No remote sensors connected.")
+                        return
+                    table = Table(title="Connected Sensors")
+                    table.add_column("Name")
+                    table.add_column("Remote IP")
+                    table.add_column("Uptime")
+                    table.add_column("Packets", justify="right")
+                    table.add_column("Data", justify="right")
+                    for s in sensors:
+                        mins = int(s["uptime"] / 60)
+                        uptime = f"{mins // 60}h {mins % 60}m" if mins >= 60 else f"{mins}m"
+                        mb = s["bytes"] / 1024 / 1024
+                        data = f"{mb / 1024:.1f} GB" if mb >= 1024 else f"{mb:.1f} MB"
+                        table.add_row(s["name"], s["remote_ip"], uptime, f"{s['packets']:,}", data)
+                    console.print(table)
+                asyncio.run(_list_sensors())
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+
+        elif args.remote_action == "builds":
+            console = Console()
+            from leetha.capture.remote.build import BuildHistory
+            history = BuildHistory(Path(get_config().data_dir))
+            builds = history.list_builds()
+            if not builds:
+                console.print("No build history.")
+            else:
+                table = Table(title="Sensor Build History")
+                table.add_column("Name")
+                table.add_column("Target")
+                table.add_column("Server")
+                table.add_column("Built")
+                table.add_column("Status")
+                for b in builds:
+                    status_str = "[green]OK[/green]" if b["success"] else "[red]FAILED[/red]"
+                    table.add_row(b["name"], b["target"], b["server"], b["built_at"][:16], status_str)
+                console.print(table)
+
+        else:
+            parser.parse_args(["remote", "--help"])
+        return
     # Apply optional flags to config
     from leetha.config import get_config
     config = get_config()
@@ -397,6 +543,45 @@ def main():
             )
         except (KeyboardInterrupt, SystemExit):
             print("\033[32m[+] Leetha stopped\033[0m")
+        return
+
+    if getattr(args, "remote", None):
+        from leetha.capture.remote.ssh import parse_ssh_url, ssh_capture
+        ssh_config = parse_ssh_url(args.remote)
+        if args.interface:
+            ssh_config.interface = parse_interface_arg(args.interface[0])[0]
+        if getattr(args, "key", None):
+            ssh_config.key_path = args.key
+
+        async def _run_ssh_capture():
+            from leetha.app import LeethaApp
+            app = LeethaApp(interfaces=iface_configs or None)
+            await app.start()
+            try:
+                async def _on_pcap_chunk(chunk, label):
+                    from scapy.utils import rdpcap
+                    import io
+                    try:
+                        pkts = rdpcap(io.BytesIO(chunk))
+                        for pkt in pkts:
+                            result = app.capture_engine._classify(pkt)
+                            if result is not None:
+                                result.interface = label
+                                app.packet_queue.put_nowait(result)
+                    except Exception:
+                        pass
+
+                await ssh_capture(ssh_config, _on_pcap_chunk)
+            except KeyboardInterrupt:
+                pass
+            finally:
+                await app.stop()
+
+        print(f"\033[36m[*] SSH capture: {ssh_config.user}@{ssh_config.host}:{ssh_config.interface}\033[0m")
+        try:
+            asyncio.run(_run_ssh_capture())
+        except KeyboardInterrupt:
+            print("\n\033[33m[*] SSH capture stopped\033[0m")
         return
 
     if args.live:

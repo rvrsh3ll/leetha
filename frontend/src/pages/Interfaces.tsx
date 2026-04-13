@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -8,8 +8,22 @@ import {
   setProbeMode,
   runProbes,
   fetchProbeStatus,
+  fetchRemoteSensors,
+  disconnectRemoteSensor,
+  setSensorInterfaces,
+  stopSensorCapture,
+  fetchBuildTargets,
+  fetchServerAddresses,
+  checkBuildPrerequisites,
+  fetchBuildHistory,
+  deleteBuildHistory,
   type NetworkInterface,
   type ProbeInfo,
+  type RemoteSensor,
+  type BuildTarget,
+  type BuildRequestBody,
+  type ServerAddress,
+  type BuildHistoryEntry,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -29,6 +43,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import {
   WifiOff,
@@ -38,6 +56,15 @@ import {
   Network,
   Globe,
   Monitor,
+  Radio,
+  Hammer,
+  Download,
+  Loader2,
+  History,
+  RotateCcw,
+  Trash2,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 
 // --- Category classification ---
@@ -131,9 +158,182 @@ export default function Interfaces() {
   const { data } = useQuery({
     queryKey: ["interfaces"],
     queryFn: fetchInterfaceList,
-    refetchInterval: 15000,  // Every 15s, not 5
+    refetchInterval: 15000,
     staleTime: 10000,
   });
+
+  const { data: sensors = [] } = useQuery({
+    queryKey: ["remote-sensors"],
+    queryFn: fetchRemoteSensors,
+    refetchInterval: 5000,
+  });
+
+  const { data: buildTargets = [] } = useQuery({
+    queryKey: ["build-targets"],
+    queryFn: fetchBuildTargets,
+  });
+
+  const { data: serverAddresses = [] } = useQuery({
+    queryKey: ["server-addresses"],
+    queryFn: fetchServerAddresses,
+  });
+
+  const { data: buildHistory = [] } = useQuery({
+    queryKey: ["build-history"],
+    queryFn: fetchBuildHistory,
+  });
+
+  // Build sensor state
+  const [buildDialogOpen, setBuildDialogOpen] = useState(false);
+  const [buildName, setBuildName] = useState("");
+  const [buildServerIp, setBuildServerIp] = useState("");
+  const [buildServerPort, setBuildServerPort] = useState("8443");
+  const [buildTarget, setBuildTarget] = useState("linux-x86_64");
+  const [buildBufferMb, setBuildBufferMb] = useState(100);
+  const [buildInProgress, setBuildInProgress] = useState(false);
+  const [buildLog, setBuildLog] = useState<Array<{ stage: string; message: string }>>([]);
+  const [buildDownloadId, setBuildDownloadId] = useState<string | null>(null);
+  const [buildDownloadFilename, setBuildDownloadFilename] = useState("leetha-sensor");
+  const buildLogRef = useRef<HTMLDivElement>(null);
+
+  // Auto-select first server address
+  useEffect(() => {
+    if (serverAddresses.length > 0 && !buildServerIp) {
+      setBuildServerIp(serverAddresses[0].address);
+    }
+  }, [serverAddresses, buildServerIp]);
+
+  // Auto-scroll build log
+  useEffect(() => {
+    if (buildLogRef.current) {
+      buildLogRef.current.scrollTop = buildLogRef.current.scrollHeight;
+    }
+  }, [buildLog]);
+
+  const handleRebuild = (entry: BuildHistoryEntry) => {
+    setBuildName(entry.name);
+    const [ip, port] = entry.server.split(":");
+    setBuildServerIp(ip || "");
+    setBuildServerPort(port || "8443");
+    setBuildTarget(entry.target);
+    setBuildBufferMb(entry.buffer_size_mb);
+    setBuildLog([]);
+    setBuildDownloadId(null);
+    setBuildDialogOpen(true);
+  };
+
+  const handleDeleteHistory = async (buildId: string) => {
+    try {
+      await deleteBuildHistory(buildId);
+      queryClient.invalidateQueries({ queryKey: ["build-history"] });
+      toast.success("Build history entry removed");
+    } catch (err) {
+      toast.error(`Failed: ${err}`);
+    }
+  };
+
+  // Update buffer size when target changes
+  const handleTargetChange = (targetId: string) => {
+    setBuildTarget(targetId);
+    const target = buildTargets.find((t) => t.id === targetId);
+    if (target) setBuildBufferMb(target.default_buffer_mb);
+  };
+
+  const handleBuildSensor = async () => {
+    if (!buildName.trim()) {
+      toast.error("Sensor name is required");
+      return;
+    }
+    if (!buildServerIp) {
+      toast.error("Server address is required");
+      return;
+    }
+
+    // Check build prerequisites before starting
+    try {
+      const prereq = await checkBuildPrerequisites(buildTarget);
+      if (!prereq.ok) {
+        toast.error(prereq.message);
+        return;
+      }
+    } catch {
+      // If check fails, proceed anyway — build will report errors
+    }
+
+    setBuildInProgress(true);
+    setBuildLog([]);
+    setBuildDownloadId(null);
+
+    const body: BuildRequestBody = {
+      name: buildName,
+      server: `${buildServerIp}:${buildServerPort}`,
+      target: buildTarget,
+      buffer_size_mb: buildBufferMb,
+    };
+
+    try {
+      const token = localStorage.getItem("leetha_token");
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const resp = await fetch("/api/remote/build", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        toast.error(err.detail || "Build request failed");
+        setBuildInProgress(false);
+        return;
+      }
+
+      const reader = resp.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (!reader) {
+        toast.error("Failed to read build stream");
+        setBuildInProgress(false);
+        return;
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const dataMatch = line.match(/^data:\s*(.+)$/m);
+          if (!dataMatch) continue;
+          try {
+            const event = JSON.parse(dataMatch[1]);
+            setBuildLog((prev) => [...prev, event]);
+
+            if (event.stage === "done") {
+              const doneData = JSON.parse(event.message);
+              setBuildDownloadId(doneData.download_id);
+              setBuildDownloadFilename(doneData.filename || "leetha-sensor");
+              toast.success("Sensor build complete");
+              queryClient.invalidateQueries({ queryKey: ["build-history"] });
+            } else if (event.stage === "error") {
+              toast.error("Build failed");
+            }
+          } catch {
+            // Skip unparseable lines
+          }
+        }
+      }
+    } catch (err) {
+      toast.error(`Build error: ${err}`);
+    } finally {
+      setBuildInProgress(false);
+    }
+  };
 
   const interfaces = data?.detected ?? [];
 
@@ -169,6 +369,56 @@ export default function Interfaces() {
       queryClient.invalidateQueries({ queryKey: ["interfaces"] });
     } catch (err) {
       toast.error(`Failed: ${err}`);
+    }
+  };
+
+  const handleDisconnectSensor = async (name: string) => {
+    try {
+      await disconnectRemoteSensor(name);
+      toast.success(`Disconnected sensor ${name}`);
+      queryClient.invalidateQueries({ queryKey: ["remote-sensors"] });
+    } catch (err) {
+      toast.error(`Failed to disconnect: ${err}`);
+    }
+  };
+
+  const [sensorSelections, setSensorSelections] = useState<Record<string, Set<string>>>({});
+
+  const toggleSensorInterface = (sensorName: string, ifaceName: string) => {
+    setSensorSelections((prev) => {
+      const current = prev[sensorName] ?? new Set<string>();
+      const next = new Set(current);
+      if (next.has(ifaceName)) {
+        next.delete(ifaceName);
+      } else {
+        next.add(ifaceName);
+      }
+      return { ...prev, [sensorName]: next };
+    });
+  };
+
+  const handleStartCapture = async (sensorName: string) => {
+    const selected = sensorSelections[sensorName];
+    if (!selected || selected.size === 0) {
+      toast.error("Select at least one interface");
+      return;
+    }
+    try {
+      await setSensorInterfaces(sensorName, Array.from(selected));
+      toast.success(`Capture started on ${selected.size} interface(s)`);
+      queryClient.invalidateQueries({ queryKey: ["remote-sensors"] });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to start capture");
+    }
+  };
+
+  const handleStopCapture = async (sensorName: string) => {
+    try {
+      await stopSensorCapture(sensorName);
+      toast.success("Capture stopped");
+      queryClient.invalidateQueries({ queryKey: ["remote-sensors"] });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to stop capture");
     }
   };
 
@@ -219,18 +469,34 @@ export default function Interfaces() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <p className="text-sm text-muted-foreground max-w-xl">
-          Select which network interfaces to capture on. Changes take effect immediately.
-        </p>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>{interfaces.length} detected</span>
-          <span>&middot;</span>
-          <span className={capturingCount > 0 ? "text-success" : ""}>{capturingCount} capturing</span>
+      <Tabs defaultValue="local" className="w-full">
+        <div className="flex items-center justify-between">
+          <TabsList>
+            <TabsTrigger value="local" className="gap-1.5">
+              <Cable size={14} />
+              Local Adapters
+              <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1.5">{interfaces.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="remote" className="gap-1.5">
+              <Radio size={14} />
+              Remote Sensors
+              {sensors.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1.5">{sensors.length}</Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className={capturingCount > 0 ? "text-success" : ""}>{capturingCount} capturing</span>
+          </div>
         </div>
-      </div>
 
-      {interfaces.length === 0 ? (
+        {/* Local Adapters Tab */}
+        <TabsContent value="local" className="space-y-6 mt-4">
+          <p className="text-sm text-muted-foreground">
+            Select which network interfaces to capture on. Changes take effect immediately.
+          </p>
+
+          {interfaces.length === 0 ? (
         <div className="rounded-xl bg-card border border-border flex flex-col items-center justify-center py-16 text-muted-foreground">
           <WifiOff size={32} className="mb-2" />
           <p className="font-medium">No interfaces detected</p>
@@ -374,6 +640,243 @@ export default function Interfaces() {
           })}
         </div>
       )}
+        </TabsContent>
+
+        {/* Remote Sensors Tab */}
+        <TabsContent value="remote" className="space-y-6 mt-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Persistent packet capture agents streaming over WebSocket.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7 gap-1.5"
+              onClick={() => setBuildDialogOpen(true)}
+            >
+              <Hammer size={12} />
+              Build Sensor
+            </Button>
+          </div>
+
+          {sensors.length === 0 ? (
+            <div className="rounded-xl bg-card border border-border flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <Radio size={32} className="mb-2" />
+              <p className="font-medium">No remote sensors connected</p>
+              <p className="text-xs mt-1">Build and deploy a sensor, or use <code className="bg-secondary px-1.5 py-0.5 rounded">leetha remote ca issue</code> to set up manually.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {sensors.map((sensor) => (
+                <div key={sensor.name} className="rounded-xl bg-card border border-border overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-2 w-2 rounded-full bg-success shrink-0" />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm">{sensor.name}</span>
+                          <Badge variant="outline" className="text-[10px] uppercase font-semibold text-violet-400 border-violet-400/30">
+                            REMOTE
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {sensor.remote_ip} &middot; {Math.floor(sensor.uptime / 60)}m uptime
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
+                      <span>{sensor.packets.toLocaleString()} pkts</span>
+                      <span>{(sensor.bytes / 1024 / 1024).toFixed(1)} MB</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7 text-destructive hover:text-destructive"
+                        onClick={() => handleDisconnectSensor(sensor.name)}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Interface rows — matching Local Adapters layout */}
+                  {sensor.remote_interfaces && sensor.remote_interfaces.length > 0 && (
+                    <div className="divide-y divide-border">
+                      {sensor.remote_interfaces.map((iface) => {
+                        const isSelected = sensorSelections[sensor.name]?.has(iface.name)
+                          ?? sensor.selected_interfaces.includes(iface.name);
+                        const isCapturing = sensor.state === "capturing" && sensor.selected_interfaces.includes(iface.name);
+                        const hasError = sensor.interface_errors?.[iface.name];
+                        const ifaceStats = sensor.interface_stats?.[iface.name];
+
+                        return (
+                          <div
+                            key={iface.name}
+                            className={cn(
+                              "flex items-start justify-between px-5 py-4 gap-4",
+                              isCapturing && "bg-primary/[0.03]"
+                            )}
+                          >
+                            {/* Left: detailed info */}
+                            <div className="space-y-2 min-w-0 flex-1">
+                              {/* Name + badges */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-sm">{iface.name}</span>
+                                {iface.up !== undefined && (
+                                  <Badge
+                                    variant={iface.up ? "default" : "secondary"}
+                                    className={cn(
+                                      "text-[10px] uppercase font-semibold",
+                                      iface.up ? "bg-success/20 text-success border-success/30" : "text-muted-foreground"
+                                    )}
+                                  >
+                                    {iface.up ? "UP" : "DOWN"}
+                                  </Badge>
+                                )}
+                                {isCapturing && (
+                                  <Badge className="text-[10px] uppercase font-semibold bg-primary/20 text-primary border-primary/30">
+                                    CAPTURING
+                                  </Badge>
+                                )}
+                                {hasError && (
+                                  <Badge variant="destructive" className="text-[10px] uppercase font-semibold">
+                                    ERROR
+                                  </Badge>
+                                )}
+                              </div>
+
+                              {/* Detail grid */}
+                              <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+                                {iface.addrs && iface.addrs.length > 0 && (
+                                  <>
+                                    <span className="text-muted-foreground">IPv4:</span>
+                                    <span className="font-data">{iface.addrs.join(", ")}</span>
+                                  </>
+                                )}
+                                {iface.desc && (
+                                  <>
+                                    <span className="text-muted-foreground">Description:</span>
+                                    <span>{iface.desc}</span>
+                                  </>
+                                )}
+                                {hasError && (
+                                  <>
+                                    <span className="text-muted-foreground">Error:</span>
+                                    <span className="text-destructive">{hasError}</span>
+                                  </>
+                                )}
+                                {ifaceStats && isCapturing && (
+                                  <>
+                                    <span className="text-muted-foreground">Packets:</span>
+                                    <span className="font-data">{ifaceStats.packets.toLocaleString()}</span>
+                                    <span className="text-muted-foreground">Bytes:</span>
+                                    <span className="font-data">{(ifaceStats.bytes / 1024).toFixed(1)} KB</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Right: switch toggle */}
+                            <div className="flex items-center gap-3 shrink-0 pt-1">
+                              <Switch
+                                checked={isSelected}
+                                disabled={sensor.state === "capturing"}
+                                onCheckedChange={() => toggleSensorInterface(sensor.name, iface.name)}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Start / Stop controls */}
+                  {sensor.remote_interfaces && sensor.remote_interfaces.length > 0 && (
+                    <div className="border-t border-border px-5 py-3 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        {sensor.state === "capturing"
+                          ? `Capturing on ${sensor.selected_interfaces.length} interface(s)`
+                          : `${sensorSelections[sensor.name]?.size ?? 0} interface(s) selected`}
+                      </span>
+                      {sensor.state === "idle" ? (
+                        <Button
+                          size="sm"
+                          className="text-xs h-7"
+                          disabled={!sensorSelections[sensor.name]?.size}
+                          onClick={() => handleStartCapture(sensor.name)}
+                        >
+                          Start Capture
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="text-xs h-7"
+                          onClick={() => handleStopCapture(sensor.name)}
+                        >
+                          Stop Capture
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Build History */}
+          {buildHistory.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <History size={14} className="text-muted-foreground" />
+                <h3 className="text-sm font-semibold">Build History</h3>
+              </div>
+              <div className="rounded-xl bg-card border border-border overflow-hidden divide-y divide-border">
+                {buildHistory.map((entry) => (
+                  <div key={entry.id} className="flex items-center justify-between px-5 py-3 gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {entry.success ? (
+                        <CheckCircle2 size={14} className="text-success shrink-0" />
+                      ) : (
+                        <XCircle size={14} className="text-destructive shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm">{entry.name}</span>
+                          <Badge variant="outline" className="text-[10px] font-mono">
+                            {entry.target}
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {entry.server} &middot; {entry.buffer_size_mb} MB buffer &middot; {new Date(entry.built_at).toLocaleDateString()} {new Date(entry.built_at).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7 gap-1"
+                        onClick={() => handleRebuild(entry)}
+                      >
+                        <RotateCcw size={12} />
+                        Rebuild
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDeleteHistory(entry.id)}
+                      >
+                        <Trash2 size={12} />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Probe Dialog */}
       <Dialog
@@ -408,6 +911,188 @@ export default function Interfaces() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Build Sensor Dialog */}
+      <Dialog open={buildDialogOpen} onOpenChange={(open) => { if (!open && !buildInProgress) setBuildDialogOpen(false); }}>
+        <DialogContent className={
+          buildLog.length > 0
+            ? "w-[98vw] max-w-[98vw] sm:max-w-[98vw] h-[90vh] max-h-[90vh] flex flex-col"
+            : "sm:max-w-2xl"
+        }>
+          <DialogHeader>
+            <DialogTitle>Build Sensor Binary</DialogTitle>
+            <DialogDescription>
+              Configure and compile a self-contained sensor with embedded certificates.
+            </DialogDescription>
+          </DialogHeader>
+
+          {buildLog.length === 0 ? (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="build-name">Sensor Name</Label>
+                <Input
+                  id="build-name"
+                  placeholder="pi-sensor"
+                  value={buildName}
+                  onChange={(e) => setBuildName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Server Address</Label>
+                <p className="text-[11px] text-muted-foreground -mt-1">
+                  IP address and port the sensor will connect back to
+                </p>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <Select
+                      value={buildServerIp}
+                      onValueChange={(val) => setBuildServerIp(val)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select IP address" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {serverAddresses.map((addr) => (
+                          <SelectItem key={`${addr.interface}-${addr.address}`} value={addr.address}>
+                            <div className="flex items-center gap-3">
+                              <span className="font-mono">{addr.address}</span>
+                              <span className="text-muted-foreground text-xs">{addr.interface}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-28">
+                    <Input
+                      placeholder="Port"
+                      value={buildServerPort}
+                      onChange={(e) => setBuildServerPort(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-2">
+                  <Label>Target Platform</Label>
+                  <Select value={buildTarget} onValueChange={handleTargetChange}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {buildTargets.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-36 space-y-2">
+                  <Label htmlFor="build-buffer">Buffer (MB)</Label>
+                  <Input
+                    id="build-buffer"
+                    type="number"
+                    min={1}
+                    value={buildBufferMb}
+                    onChange={(e) => setBuildBufferMb(parseInt(e.target.value) || 10)}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 min-h-0 flex flex-col py-2">
+              <div
+                ref={buildLogRef}
+                className="flex-1 min-h-0 overflow-y-auto rounded-lg bg-black p-5 font-mono text-sm leading-relaxed space-y-1 border border-border"
+              >
+                {buildLog.map((entry, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      entry.stage === "error" && "text-destructive",
+                      entry.stage === "done" && "text-success",
+                      entry.stage === "compile" && "text-muted-foreground",
+                      entry.stage === "certs" && "text-violet-400",
+                      entry.stage === "config" && "text-cyan-400",
+                    )}
+                  >
+                    <span className="text-muted-foreground/50">[{entry.stage}]</span>{" "}
+                    {entry.stage === "done" ? "Build complete" : entry.message}
+                  </div>
+                ))}
+                {buildInProgress && (
+                  <div className="flex items-center gap-2 text-muted-foreground pt-1">
+                    <Loader2 size={12} className="animate-spin" />
+                    Building...
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            {buildLog.length === 0 ? (
+              <>
+                <Button variant="outline" onClick={() => setBuildDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleBuildSensor} disabled={buildInProgress || !buildName.trim()}>
+                  {buildInProgress ? (
+                    <><Loader2 size={14} className="animate-spin mr-2" /> Building...</>
+                  ) : (
+                    <><Hammer size={14} className="mr-2" /> Build</>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <>
+                {buildDownloadId && (
+                  <Button
+                    onClick={async () => {
+                      try {
+                        const token = localStorage.getItem("leetha_token");
+                        const headers: Record<string, string> = {};
+                        if (token) headers["Authorization"] = `Bearer ${token}`;
+                        const resp = await fetch(`/api/remote/build/${buildDownloadId}`, { headers });
+                        if (!resp.ok) {
+                          toast.error("Download failed");
+                          return;
+                        }
+                        const blob = await resp.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = buildDownloadFilename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      } catch (err) {
+                        toast.error(`Download error: ${err}`);
+                      }
+                    }}
+                  >
+                    <Download size={14} className="mr-2" />
+                    Download {buildDownloadFilename}
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setBuildLog([]);
+                    setBuildDownloadId(null);
+                  }}
+                >
+                  {buildDownloadId ? "Build Another" : "Try Again"}
+                </Button>
+                <Button variant="outline" onClick={() => { setBuildDialogOpen(false); setBuildLog([]); setBuildDownloadId(null); }}>
+                  Close
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
