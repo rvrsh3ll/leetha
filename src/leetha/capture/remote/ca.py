@@ -4,6 +4,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import datetime
+import os
 from pathlib import Path
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -27,6 +28,7 @@ def _write_key(key: ec.EllipticCurvePrivateKey, path: Path) -> None:
             serialization.NoEncryption(),
         )
     )
+    os.chmod(str(path), 0o600)
 
 
 def _write_cert(cert: x509.Certificate, path: Path) -> None:

@@ -88,8 +88,8 @@ console commands:
     parser.add_argument(
         "--port",
         type=int,
-        default=8080,
-        help="Web UI port (default: 8080)",
+        default=443,
+        help="Web UI port (default: 443)",
     )
     parser.add_argument(
         "--auth", action="store_true", default=None, dest="force_auth",
@@ -461,7 +461,7 @@ def main():
             try:
                 async def _list_sensors():
                     async with aiohttp.ClientSession() as session:
-                        async with session.get("http://localhost:8080/api/remote/sensors") as resp:
+                        async with session.get("https://localhost:443/api/remote/sensors", ssl=False) as resp:
                             if resp.status != 200:
                                 console.print("[red]Failed to query sensors — is leetha running?[/red]")
                                 return

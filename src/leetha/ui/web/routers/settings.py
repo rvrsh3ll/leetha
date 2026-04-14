@@ -31,6 +31,11 @@ async def put_settings(request: Request):
             current = getattr(config, key)
             if isinstance(current, list):
                 setattr(config, key, value if isinstance(value, list) else [value])
+            elif isinstance(current, bool):
+                if isinstance(value, str):
+                    setattr(config, key, value.lower() in ("true", "1", "yes"))
+                else:
+                    setattr(config, key, bool(value))
             else:
                 setattr(config, key, type(current)(value))
     save_config(config)
@@ -81,6 +86,11 @@ async def import_settings(request: Request):
             current = getattr(config, key)
             if isinstance(current, list):
                 setattr(config, key, value if isinstance(value, list) else [value])
+            elif isinstance(current, bool):
+                if isinstance(value, str):
+                    setattr(config, key, value.lower() in ("true", "1", "yes"))
+                else:
+                    setattr(config, key, bool(value))
             else:
                 setattr(config, key, type(current)(value))
     save_config(config)
@@ -237,7 +247,7 @@ async def run_query(request: Request):
 
     # Block dangerous keywords anywhere in the query
     upper = sql.upper()
-    for kw in ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "REPLACE", "ATTACH", "DETACH", "PRAGMA"]:
+    for kw in ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "REPLACE", "ATTACH", "DETACH", "PRAGMA", "LOAD_EXTENSION", "WRITEFILE", "READFILE", "FTS3_TOKENIZER"]:
         # Check as whole words to avoid false positives
         if _re.search(r'\b' + kw + r'\b', upper):
             return JSONResponse(status_code=400, content={"error": f"Forbidden keyword: {kw}"})
@@ -248,20 +258,28 @@ async def run_query(request: Request):
 
     # Try new Store first (has verdicts, hosts, sightings, findings tables)
     try:
-        cursor = await app_instance.store.connection.execute(sql)
-        rows = await cursor.fetchall()
-        if rows:
-            columns = [d[0] for d in cursor.description] if cursor.description else []
-            return {"columns": columns, "rows": [list(r) for r in rows]}
-        return {"columns": [], "rows": []}
-    except Exception:
-        pass
+        conn = app_instance.store.connection
+        await conn.execute("PRAGMA query_only = 1")
+        try:
+            cursor = await conn.execute(sql)
+            rows = await cursor.fetchall()
+            if rows:
+                columns = [d[0] for d in cursor.description] if cursor.description else []
+                return {"columns": columns, "rows": [list(r) for r in rows]}
+            return {"columns": [], "rows": []}
+        finally:
+            await conn.execute("PRAGMA query_only = 0")
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).debug("Store query failed, trying legacy: %s", exc)
     # Fall back to old Database (has devices, observations, alerts, etc.)
     try:
         result = await app_instance.db.execute_readonly_query(sql)
         return result
     except Exception as e:
-        return JSONResponse(status_code=400, content={"error": str(e)})
+        import logging
+        logging.getLogger(__name__).exception("Query execution failed")
+        return JSONResponse(status_code=400, content={"error": "Query execution failed"})
 
 
 @router.get("/api/settings/browse")
@@ -278,6 +296,12 @@ async def browse_filesystem(request: Request):
         target = target.resolve()
     except (OSError, ValueError):
         return JSONResponse(status_code=400, content={"error": "Invalid path"})
+
+    # Restrict browsing to safe directories
+    allowed_roots = [os.path.expanduser("~"), "/etc/leetha", "/var/lib/leetha"]
+    resolved = os.path.realpath(str(target))
+    if not any(resolved.startswith(root) for root in allowed_roots):
+        return JSONResponse(status_code=403, content={"error": "Access denied"})
 
     if not target.is_dir():
         return JSONResponse(status_code=400, content={"error": "Not a directory"})

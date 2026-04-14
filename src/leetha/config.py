@@ -37,7 +37,7 @@ class LeethaConfig:
 
     # Web UI
     web_host: str = "0.0.0.0"
-    web_port: int = 8080
+    web_port: int = 443
     web_tls: bool = True
     web_tls_cert: str = ""
     web_tls_key: str = ""
