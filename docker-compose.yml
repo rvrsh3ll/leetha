@@ -15,8 +15,9 @@ services:
       dockerfile: Dockerfile
     container_name: leetha
     cap_add:
-      - NET_RAW          # Required for packet capture
-      - NET_ADMIN        # Required for interface enumeration
+      - NET_RAW            # Required for packet capture
+      - NET_ADMIN          # Required for promiscuous mode + file-capability exec
+      - NET_BIND_SERVICE   # Required for binding port 443
     network_mode: host    # Direct access to host network interfaces
     volumes:
       - app-storage:/home/appuser/.leetha

@@ -117,10 +117,12 @@ pip install -e .
 ```bash
 # Build locally (includes frontend build)
 docker build -t leetha .
-docker run --net=host --cap-add=NET_RAW --cap-add=NET_BIND_SERVICE leetha --web
+docker run --net=host \
+  --cap-add=NET_RAW --cap-add=NET_ADMIN --cap-add=NET_BIND_SERVICE \
+  leetha --web
 ```
 
-The Docker image exposes port 443 (HTTPS) by default and adds `cap_net_bind_service` for binding to privileged ports.
+The Docker image exposes port 443 (HTTPS) by default. All three capabilities above are required: `NET_RAW` for packet capture, `NET_ADMIN` for promiscuous mode (and to satisfy the Python binary's baked-in file capabilities — exec fails with `Operation not permitted` without it), and `NET_BIND_SERVICE` for binding to port 443.
 
 ### Docker Compose
 
@@ -165,13 +167,15 @@ When running under sudo, leetha automatically chowns its data directory back to 
 
 ### Option 3: Docker
 
-Docker with `--cap-add=NET_RAW` and `--net=host` gives the container capture access without granting root to the host.
+Docker with `--cap-add=NET_RAW`, `--cap-add=NET_ADMIN`, `--cap-add=NET_BIND_SERVICE`, and `--net=host` gives the container capture access without granting root to the host.
 
 ```bash
 docker run -d \
   --name leetha \
   --net=host \
   --cap-add=NET_RAW \
+  --cap-add=NET_ADMIN \
+  --cap-add=NET_BIND_SERVICE \
   -v leetha-data:/home/appuser/.leetha \
   ghcr.io/tjnull/leetha:latest --web
 ```

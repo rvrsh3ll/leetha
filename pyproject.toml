@@ -25,6 +25,7 @@ dependencies = [
     "prometheus-client>=0.20",
     "cryptography>=44.0.1",
     "asyncssh>=2.14.2",
+    "pyreadline3>=3.4; sys_platform == 'win32'",
 ]
 
 [project.scripts]

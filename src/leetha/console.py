@@ -10,13 +10,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+# Line editing for input(): stdlib readline on Unix; on Windows, the
+# pyreadline3 package installs a `readline` shim on import so this same
+# import works there too. If neither is present, input() still works —
+# we just skip tab-completion/history setup below.
 try:
-    import readline  # noqa: F401  — input() history/editing on Unix
+    import readline
 except ImportError:
-    try:
-        import pyreadline3  # noqa: F401  — Windows alternative
-    except ImportError:
-        pass  # No line editing — input() still works, just no history
+    readline = None  # type: ignore[assignment]
 import shlex
 import signal
 from datetime import datetime
@@ -186,11 +187,10 @@ class LeethaCompleter:
         # Use _line override (for tests) or readline buffer
         if self._line:
             line = self._line
+        elif readline is not None and hasattr(readline, "get_line_buffer"):
+            line = readline.get_line_buffer()
         else:
-            try:
-                line = readline.get_line_buffer()
-            except AttributeError:
-                line = text
+            line = text
 
         parts = line.lstrip().split()
         # Completing first word (command name)
@@ -230,7 +230,8 @@ class LeethaCompleter:
             else:
                 sys.stdout.write(f"  \033[1;36m{clean}\033[0m\n")
         sys.stdout.flush()
-        readline.redisplay()
+        if readline is not None and hasattr(readline, "redisplay"):
+            readline.redisplay()
 
 
 class LeethaConsole:
@@ -288,16 +289,27 @@ class LeethaConsole:
 
         signal.signal(signal.SIGINT, _sigint_handler)
 
-        # Set up tab completion
-        old_completer = readline.get_completer()
-        old_delims = readline.get_completer_delims()
-        readline.set_completer(self._completer.complete)
-        readline.set_completion_display_matches_hook(self._completer.display_hook)
-        readline.parse_and_bind("tab: complete")
-        readline.set_completer_delims(" \t\n")
-        # Suppress default filename fallback
-        if hasattr(readline, "set_auto_history"):
-            readline.set_auto_history(True)
+        # Set up tab completion. Each attribute is hasattr-guarded because
+        # alternative readline implementations (e.g. pyreadline3 on Windows)
+        # ship a partial API — notably set_completion_display_matches_hook
+        # is absent and must not be called blindly.
+        old_completer = None
+        old_delims = None
+        if readline is not None:
+            if hasattr(readline, "get_completer"):
+                old_completer = readline.get_completer()
+            if hasattr(readline, "get_completer_delims"):
+                old_delims = readline.get_completer_delims()
+            if hasattr(readline, "set_completer"):
+                readline.set_completer(self._completer.complete)
+            if hasattr(readline, "set_completion_display_matches_hook"):
+                readline.set_completion_display_matches_hook(self._completer.display_hook)
+            if hasattr(readline, "parse_and_bind"):
+                readline.parse_and_bind("tab: complete")
+            if hasattr(readline, "set_completer_delims"):
+                readline.set_completer_delims(" \t\n")
+            if hasattr(readline, "set_auto_history"):
+                readline.set_auto_history(True)
 
         # Auto-start capture if interfaces were provided via CLI (-i flag).
         # This happens after sudo re-exec: the user already selected an
@@ -345,9 +357,13 @@ class LeethaConsole:
             # first thing in the finally block so no KeyboardInterrupt
             # can fire during cleanup or in atexit handlers.
             signal.signal(signal.SIGINT, signal.SIG_IGN)
-            readline.set_completer(old_completer)
-            readline.set_completer_delims(old_delims)
-            readline.set_completion_display_matches_hook(None)
+            if readline is not None:
+                if hasattr(readline, "set_completer"):
+                    readline.set_completer(old_completer)
+                if hasattr(readline, "set_completer_delims") and old_delims is not None:
+                    readline.set_completer_delims(old_delims)
+                if hasattr(readline, "set_completion_display_matches_hook"):
+                    readline.set_completion_display_matches_hook(None)
             self.console.print("\n  [dim]Goodbye.[/dim]\n")
             try:
                 if self.app is not None:

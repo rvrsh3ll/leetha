@@ -36,8 +36,11 @@ RUN apt-get update \
 COPY --from=compile /src/wheels/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm -f /tmp/*.whl
 
-# Grant packet capture capabilities to the Python interpreter so
-# capture works even without docker run --cap-add (e.g., Dockhand).
+# Bake capture + bind + promisc capabilities into the Python interpreter.
+# Because these are file capabilities, `docker run` MUST add NET_RAW,
+# NET_ADMIN, and NET_BIND_SERVICE to the container's bounding set — any
+# file capability missing from the bounding set makes exec fail with EPERM
+# ("Operation not permitted"). docker-compose.yml already does this.
 RUN setcap 'cap_net_raw,cap_net_admin,cap_net_bind_service+eip' /usr/local/bin/python3.11
 
 # Non-root user for safety
