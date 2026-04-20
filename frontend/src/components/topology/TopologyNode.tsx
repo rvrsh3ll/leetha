@@ -96,9 +96,15 @@ export const TopologyNode = memo(function TopologyNode({ data, selected }: NodeP
         <div className={`font-semibold leading-tight truncate ${isInfra ? "text-base max-w-[160px]" : "text-sm max-w-[140px]"}`}>
           {label}
         </div>
-        {d.ip && (
+        {d.all_ips && (d.all_ips as string[]).length > 1 ? (
+          <div className="text-xs text-muted-foreground leading-tight font-mono space-y-0">
+            {(d.all_ips as string[]).map((ip, i) => (
+              <div key={i}>{ip}</div>
+            ))}
+          </div>
+        ) : d.ip ? (
           <div className="text-xs text-muted-foreground leading-tight font-mono">{d.ip}</div>
-        )}
+        ) : null}
         {d.manufacturer && d.hostname && (
           <div className={`text-[11px] text-muted-foreground/60 leading-tight truncate ${isInfra ? "max-w-[150px]" : "max-w-[130px]"}`}>
             {d.manufacturer}

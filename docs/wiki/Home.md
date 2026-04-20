@@ -13,7 +13,7 @@ Beyond identification, Leetha applies `FindingRule` evaluations (registered via 
 ```bash
 pipx install leetha                # pull the package
 leetha sync                        # fetch reference databases (~880 MB, optional)
-leetha start web                   # open the React dashboard at http://localhost:8080
+leetha start web                   # open the React dashboard at https://localhost
 ```
 
 Detailed walkthrough: [Getting Started](Getting-Started.md)
@@ -28,16 +28,20 @@ Detailed walkthrough: [Getting Started](Getting-Started.md)
 - [Fingerprint Sources](Fingerprint-Sources.md) -- The 12 upstream databases and the PatternLoader pipeline
 - [Passive Network Discovery](Passive-Network-Discovery.md) -- Processor-based evidence extraction from ambient traffic
 - [Active Probing](Active-Probing.md) -- ServiceProbe interface, ServiceConnection, identify() method
+- [PCAP Import](PCAP-Import.md) -- Import captured traffic for offline analysis through the fingerprinting pipeline
 - [Web Dashboard](Web-Dashboard.md) -- React frontend pages, REST API, WebSocket events
 - [Attack Surface Analysis](Attack-Surface-Analysis.md) -- FindingRules, chain activation, tool command templates
+- [Remote Sensors](Remote-Sensors.md) -- Build, deploy, and manage remote packet capture sensors
 - [Interface Types & VPN Capture](Interface-Types-VPN-Capture.md) -- NetworkAdapter, AdapterConfig, scan_adapters
 - [Spoofing Detection](Spoofing-Detection.md) -- AddressVerifier, addr_conflict finding, trusted binding management
+- [Authentication](Authentication.md) -- Token-based API security, roles, and token management
+- [Notifications](Notifications.md) -- Alert notifications via Apprise (Slack, email, webhooks, 80+ services)
 
 ---
 
 ## What Leetha Provides
 
-**Protocol coverage** -- 11 dissectors handle TCP SYN, DHCPv4/v6, mDNS, DNS, SSDP, LLMNR, NetBIOS NS, TLS ClientHello, ARP, and ICMPv6 packets.
+**Protocol coverage** -- 11 dissectors handle TCP SYN, DHCPv4/v6, mDNS, DNS (with IPv6 support), SSDP (including M-SEARCH requests), LLMNR, NetBIOS NS, TLS ClientHello (including detection on non-standard ports), ARP, and ICMPv6 (including Router Solicitation) packets.
 
 **Processor architecture** -- Every analysis step is a processor registered with `@register_processor` in the `ProcessorRegistry`. Processors emit `Evidence` objects that the `VerdictEngine` fuses into a final `Verdict` per host.
 

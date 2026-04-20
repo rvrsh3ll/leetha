@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
+from datetime import timezone as _tz
 from enum import StrEnum
 
 
@@ -37,8 +38,8 @@ class Device:
     os_version: str | None = None
     hostname: str | None = None
     confidence: int = 0
-    first_seen: datetime = field(default_factory=datetime.now)
-    last_seen: datetime = field(default_factory=datetime.now)
+    first_seen: datetime = field(default_factory=lambda: datetime.now(_tz.utc))
+    last_seen: datetime = field(default_factory=lambda: datetime.now(_tz.utc))
     alert_status: str = "new"
     raw_evidence: dict = field(default_factory=dict)
     is_randomized_mac: bool = False
@@ -109,7 +110,7 @@ class Device:
                     return datetime.fromisoformat(val)
                 except (ValueError, TypeError):
                     pass
-            return datetime.now()
+            return datetime.now(_tz.utc)
 
         raw_ev = _get("raw_evidence", 12)
         override = _get("manual_override", 16)
@@ -146,8 +147,8 @@ class DeviceIdentity:
     os_version: str | None = None
     hostname: str | None = None
     confidence: int = 0
-    first_seen: datetime = field(default_factory=datetime.now)
-    last_seen: datetime = field(default_factory=datetime.now)
+    first_seen: datetime = field(default_factory=lambda: datetime.now(_tz.utc))
+    last_seen: datetime = field(default_factory=lambda: datetime.now(_tz.utc))
     correlation_fingerprint: dict = field(default_factory=dict)
     # Populated by JOIN queries, not stored directly:
     mac_count: int = 1
@@ -198,7 +199,7 @@ class Observation:
     match_result: str
     confidence: int
     id: int | None = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(_tz.utc))
     interface: str | None = None
     network: str | None = None
 
@@ -210,7 +211,7 @@ class Alert:
     severity: AlertSeverity
     message: str
     id: int | None = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(_tz.utc))
     acknowledged: bool = False
 
 
@@ -227,6 +228,8 @@ class FindingRule(StrEnum):
     DHCP_ANOMALY = "dhcp_anomaly"
     IDENTITY_SHIFT = "identity_shift"
     BEHAVIORAL_DRIFT = "behavioral_drift"
+    SENSOR_CONNECT = "sensor_connect"
+    SENSOR_DISCONNECT = "sensor_disconnect"
 
 
 @dataclass
@@ -235,8 +238,8 @@ class Host:
     hw_addr: str
     ip_addr: str | None = None
     ip_v6: str | None = None
-    discovered_at: datetime = field(default_factory=datetime.now)
-    last_active: datetime = field(default_factory=datetime.now)
+    discovered_at: datetime = field(default_factory=lambda: datetime.now(_tz.utc))
+    last_active: datetime = field(default_factory=lambda: datetime.now(_tz.utc))
     mac_randomized: bool = False
     real_hw_addr: str | None = None
     disposition: str = "new"  # "new", "known", "self"
@@ -257,8 +260,12 @@ class Finding:
     severity: AlertSeverity  # reuse existing severity enum
     message: str
     id: int | None = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(_tz.utc))
     resolved: bool = False
+    status: str = "new"  # new, reviewing, resolved, false_positive, snoozed
+    disposition: str | None = None  # true_positive, false_positive, benign
+    snoozed_until: datetime | None = None
+    notes: str | None = None
 
 
 @dataclass
@@ -271,7 +278,7 @@ class Sighting:
     certainty: float = 0.0
     interface: str | None = None
     network: str | None = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(_tz.utc))
 
 
 @dataclass
@@ -286,5 +293,5 @@ class Identity:
     hostname: str | None = None
     confidence: int = 0
     fingerprint: dict = field(default_factory=dict)
-    first_seen: datetime = field(default_factory=datetime.now)
-    last_seen: datetime = field(default_factory=datetime.now)
+    first_seen: datetime = field(default_factory=lambda: datetime.now(_tz.utc))
+    last_seen: datetime = field(default_factory=lambda: datetime.now(_tz.utc))

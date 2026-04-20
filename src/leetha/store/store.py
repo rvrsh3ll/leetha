@@ -5,6 +5,8 @@ each managing its own SQL operations.
 """
 from __future__ import annotations
 
+import asyncio
+
 import aiosqlite
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from leetha.store.verdicts import VerdictRepository
 from leetha.store.identities import IdentityRepository
 from leetha.store.snapshots import SnapshotRepository
 from leetha.store.overrides import OverrideRepository
+from leetha.store.topology_overrides import TopologyOverrideRepository
 
 
 class Store:
@@ -23,6 +26,7 @@ class Store:
     def __init__(self, db_path: str | Path):
         self.db_path = str(db_path)
         self._conn: aiosqlite.Connection | None = None
+        self._write_lock = asyncio.Lock()
         self.hosts: HostRepository | None = None
         self.findings: FindingRepository | None = None
         self.sightings: SightingRepository | None = None
@@ -30,19 +34,20 @@ class Store:
         self.identities: IdentityRepository | None = None
         self.snapshots: SnapshotRepository | None = None
         self.overrides: OverrideRepository | None = None
+        self.topology_overrides: TopologyOverrideRepository | None = None
 
     async def initialize(self):
         """Open connection and create all tables."""
-        self._conn = await aiosqlite.connect(self.db_path)
+        self._conn = await aiosqlite.connect(self.db_path, isolation_level=None)
         self._conn.row_factory = aiosqlite.Row
         # Match the legacy Database's performance pragmas
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.execute("PRAGMA synchronous=NORMAL")
-        await self._conn.execute("PRAGMA busy_timeout=5000")
-        self.hosts = HostRepository(self._conn)
-        self.findings = FindingRepository(self._conn)
-        self.sightings = SightingRepository(self._conn)
-        self.verdicts = VerdictRepository(self._conn)
+        await self._conn.execute("PRAGMA busy_timeout=30000")
+        self.hosts = HostRepository(self._conn, self._write_lock)
+        self.findings = FindingRepository(self._conn, self._write_lock)
+        self.sightings = SightingRepository(self._conn, self._write_lock)
+        self.verdicts = VerdictRepository(self._conn, self._write_lock)
         self.identities = IdentityRepository(self._conn)
         self.snapshots = SnapshotRepository(self._conn)
         await self.hosts.create_tables()
@@ -53,6 +58,8 @@ class Store:
         await self.snapshots.create_tables()
         self.overrides = OverrideRepository(self._conn)
         await self.overrides.create_tables()
+        self.topology_overrides = TopologyOverrideRepository(self._conn)
+        await self.topology_overrides.create_tables()
 
         # One-time migration from file-based overrides
         data_dir = Path(self.db_path).parent

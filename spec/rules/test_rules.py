@@ -29,8 +29,7 @@ class TestRuleRegistry:
         assert "low_certainty" in rules
         assert "identity_shift" in rules
         assert "addr_conflict" in rules
-        assert "dhcp_anomaly" in rules
-        assert "stale_source" in rules
+        # dhcp_anomaly and stale_source removed -- always returned None (dead code)
         assert "randomized_addr" in rules
 
     def test_unknown_rule(self):
@@ -119,6 +118,10 @@ class TestLowCertaintyRule:
         from leetha.rules import discovery
         discovery._LOW_CERT_LAST_FIRED.clear()
         store = MagicMock()
+        # Mock the DB dedup query to return 0 existing findings
+        mock_cursor = AsyncMock()
+        mock_cursor.fetchone = AsyncMock(return_value=(0,))
+        store.connection.execute = AsyncMock(return_value=mock_cursor)
         rule = get_rule("low_certainty")()
         host = Host(hw_addr="aa:bb:cc:dd:ee:ff", disposition="known")
         verdict = Verdict(hw_addr="aa:bb:cc:dd:ee:ff", certainty=30)

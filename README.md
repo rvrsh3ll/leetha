@@ -4,9 +4,11 @@
 
 ### Passive Network Fingerprinting and Analysis Engine
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/tjnull/leetha/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tjnull/leetha/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/tjnull/leetha/releases)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Tests](https://img.shields.io/badge/tests-531%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-551%20passing-brightgreen.svg)](#testing)
 
 </div>
 
@@ -20,12 +22,16 @@
 
 - **Passive-first design** -- identifies devices without sending a single packet; active probing is optional
 - **Multi-evidence fusion** -- weighted certainty scoring across 15+ protocol sources with agreement boosting when independent sources corroborate
+- **mDNS SRV target extraction** -- captures device hostnames, service ports, model names, and HomeKit categories from SRV/TXT records
+- **Infrastructure-aware mDNS filtering** -- automatically detects routers/gateways/APs and suppresses forwarded multicast that would pollute device identity
 - **30 protocol banner matchers** -- passively reads service banners (SSH, MySQL, SMB, RDP, MQTT, RTSP, and more) from observed traffic
 - **315 active probe plugins** -- protocol-specific request/response parsing, not just banner grabs
-- **11.5 million fingerprint signatures** -- synced from 12 upstream databases including IEEE OUI, Huginn-Muninn, p0f, JA3/JA4
-- **Real-time web dashboard** -- host inventory, detection triage, network topology, and attack surface analysis via WebSocket
+- **11.5 million fingerprint signatures** -- synced from 12 upstream databases including IEEE OUI, Huginn-Muninn, Satori, p0f, JA3/JA4
+- **Real-time web dashboard** -- host inventory with numeric IP sorting, live packet stream, network topology, and attack surface analysis via WebSocket
+- **PCAP import** -- import captured traffic from Wireshark or tcpdump for offline analysis through the full fingerprinting pipeline
 - **Behavioral detection** -- DNS vendor affinity drift, identity shift alerts, MAC spoofing detection, DHCP anomaly analysis
 - **OT / ICS / SCADA support** -- passive identification of Modbus, BACnet, EtherNet/IP, CoAP, MQTT, and industrial device fingerprinting
+- **Auth & notifications** -- token-based API authentication with role-based access control; alert notifications via Apprise (Slack, email, webhooks, and 80+ services)
 
 ## How It Works
 
@@ -86,7 +92,7 @@ sudo $(which leetha) -i eth0
 sudo $(which leetha) -i eth0 -i wlan0
 ```
 
-Open `http://localhost:8080` to view discovered devices in real-time.
+Open `https://localhost` to view discovered devices in real-time.
 
 ## Installation
 
@@ -111,14 +117,54 @@ pip install -e .
 ```bash
 # Build locally (includes frontend build)
 docker build -t leetha .
-docker run --net=host --cap-add=NET_RAW leetha --web
+docker run --net=host \
+  --cap-add=NET_RAW --cap-add=NET_ADMIN --cap-add=NET_BIND_SERVICE \
+  leetha --web
 ```
+
+The Docker image exposes port 443 (HTTPS) by default. All three capabilities above are required: `NET_RAW` for packet capture, `NET_ADMIN` for promiscuous mode (and to satisfy the Python binary's baked-in file capabilities — exec fails with `Operation not permitted` without it), and `NET_BIND_SERVICE` for binding to port 443.
 
 ### Docker Compose
 
 ```bash
 docker compose up -d
 ```
+
+### Docker customization
+
+Leetha reads `LEETHA_*` environment variables as defaults for its CLI flags, so you can customize the web listener without rebuilding the image. CLI flags (passed after the image name, or via compose's `command:`) always take precedence.
+
+| Variable          | Equivalent flag | Default          |
+| ----------------- | --------------- | ---------------- |
+| `LEETHA_HOST`     | `--host`        | `0.0.0.0`        |
+| `LEETHA_PORT`     | `--port`        | `443`            |
+| `LEETHA_NO_TLS`   | `--no-tls`      | `false` (TLS on) |
+| `LEETHA_TLS_CERT` | `--tls-cert`    | auto-generated   |
+| `LEETHA_TLS_KEY`  | `--tls-key`     | auto-generated   |
+| `LEETHA_AUTH`     | `--auth` / `--no-auth` | auto (on for non-loopback binds) |
+
+Examples:
+
+```bash
+# docker run: env vars + extra flags passed through to leetha
+docker run --net=host \
+  --cap-add=NET_RAW --cap-add=NET_ADMIN --cap-add=NET_BIND_SERVICE \
+  -e LEETHA_PORT=8443 -e LEETHA_AUTH=on \
+  leetha --web
+
+# docker run: mount your own TLS cert/key
+docker run --net=host \
+  --cap-add=NET_RAW --cap-add=NET_ADMIN --cap-add=NET_BIND_SERVICE \
+  -v /etc/letsencrypt/live/example.com:/tls:ro \
+  -e LEETHA_TLS_CERT=/tls/fullchain.pem \
+  -e LEETHA_TLS_KEY=/tls/privkey.pem \
+  leetha --web
+
+# docker compose: override flags via `command:` (see commented examples
+# in docker-compose.yml)
+```
+
+Because the container uses `--net=host` (required for packet capture), Docker's `-p host:container` port mapping does **not** apply — change `LEETHA_PORT` to bind a different port on the host.
 
 ## Capture Privileges
 
@@ -157,13 +203,15 @@ When running under sudo, leetha automatically chowns its data directory back to 
 
 ### Option 3: Docker
 
-Docker with `--cap-add=NET_RAW` and `--net=host` gives the container capture access without granting root to the host.
+Docker with `--cap-add=NET_RAW`, `--cap-add=NET_ADMIN`, `--cap-add=NET_BIND_SERVICE`, and `--net=host` gives the container capture access without granting root to the host.
 
 ```bash
 docker run -d \
   --name leetha \
   --net=host \
   --cap-add=NET_RAW \
+  --cap-add=NET_ADMIN \
+  --cap-add=NET_BIND_SERVICE \
   -v leetha-data:/home/appuser/.leetha \
   ghcr.io/tjnull/leetha:latest --web
 ```
@@ -347,6 +395,7 @@ See [docs/wiki/](docs/wiki/Home.md) for detailed guides:
 - [Fingerprint Sources](docs/wiki/Fingerprint-Sources.md)
 - [CLI Reference](docs/wiki/CLI-Reference.md)
 - [Web Dashboard](docs/wiki/Web-Dashboard.md)
+- [Remote Sensors](docs/wiki/Remote-Sensors.md)
 - [Attack Surface Analysis](docs/wiki/Attack-Surface-Analysis.md)
 - [Spoofing Detection](docs/wiki/Spoofing-Detection.md)
 
@@ -365,7 +414,7 @@ Leetha is a passive network analysis tool intended for **authorized use only** o
 
 Leetha's fingerprinting accuracy depends on data generously maintained by these projects:
 
-- **[Huginn-Muninn](https://github.com/fingerbank/Huginn-Muninn)** by **[Ringmaster](https://github.com/Ringmaster)** -- MAC vendor database, DHCP fingerprints, device hierarchy, and DHCPv6 patterns. The backbone of leetha's device identification.
+- **[Huginn-Muninn](https://github.com/Ringmast4r/Huginn-Muninn)** by **[Ringmast4r](https://github.com/Ringmast4r)** -- MAC vendor database, DHCP fingerprints, device hierarchy, and DHCPv6 patterns. The backbone of leetha's device identification.
 - **[IEEE OUI Registry](https://standards-oui.ieee.org/)** -- Official MAC address manufacturer assignments.
 - **[p0f](https://lcamtuf.coredump.cx/p0f3/)** -- TCP/IP stack fingerprinting signatures by Michal Zalewski. The foundation for passive OS detection.
 - **[JA3](https://github.com/salesforce/ja3)** -- TLS client fingerprinting method by Salesforce.

@@ -153,7 +153,11 @@ export async function fetchAlerts(params?: {
     });
   }
   const qs = searchParams.toString();
-  return apiFetch(`/api/alerts${qs ? `?${qs}` : ""}`);
+  const data = await apiFetch<{ alerts: Alert[] } | Alert[]>(
+    `/api/alerts${qs ? `?${qs}` : ""}`
+  );
+  // Handle both paginated response {alerts: [...]} and legacy array
+  return Array.isArray(data) ? data : data.alerts;
 }
 
 // --- Stats endpoints ---
@@ -300,10 +304,22 @@ export interface PatternEntry {
   device_type: string;
   manufacturer: string;
   confidence: number;
+  hits?: number;
+  created_at?: string;
 }
 
 export interface PatternsResponse {
   [type: string]: PatternEntry[];
+}
+
+export interface PatternTestMatch {
+  hw_addr: string;
+  ip_addr: string;
+  matched_on: string;
+  current_category: string;
+  current_vendor: string;
+  new_category: string;
+  new_vendor: string;
 }
 
 // --- Pattern endpoints ---
@@ -319,8 +335,54 @@ export async function addPattern(type: string, pattern: PatternEntry) {
   });
 }
 
+export async function updatePattern(type: string, index: number, pattern: PatternEntry) {
+  return apiFetch(`/api/patterns/${encodeURIComponent(type)}/${index}`, {
+    method: "PUT",
+    body: JSON.stringify(pattern),
+  });
+}
+
 export async function deletePattern(type: string, index: number) {
   return apiFetch(`/api/patterns/${encodeURIComponent(type)}/${index}`, { method: "DELETE" });
+}
+
+export async function reorderPatterns(type: string, order: number[]) {
+  return apiFetch(`/api/patterns/${encodeURIComponent(type)}/reorder`, {
+    method: "POST",
+    body: JSON.stringify({ order }),
+  });
+}
+
+export async function resetPatternHits(type: string, index: number) {
+  return apiFetch(`/api/patterns/${encodeURIComponent(type)}/${index}/reset-hits`, {
+    method: "POST",
+  });
+}
+
+export async function testPattern(entry: { type: string; pattern: string; device_type: string; manufacturer: string }): Promise<{ matches: PatternTestMatch[]; count: number }> {
+  return apiFetch("/api/patterns/test", {
+    method: "POST",
+    body: JSON.stringify(entry),
+  });
+}
+
+export async function validatePattern(entry: { type: string; pattern: string }): Promise<{ valid: boolean; error?: string }> {
+  return apiFetch("/api/patterns/validate", {
+    method: "POST",
+    body: JSON.stringify(entry),
+  });
+}
+
+export async function importPatterns(data: string, contentType: string, dryRun: boolean = false) {
+  return apiFetch(`/api/patterns/import?dry_run=${dryRun}`, {
+    method: "POST",
+    headers: { "Content-Type": contentType },
+    body: data,
+  });
+}
+
+export function exportPatternsUrl(format: "json" | "csv"): string {
+  return `/api/patterns/export?format=${format}`;
 }
 
 /** @deprecated Use fetchInterfaceList instead */
@@ -395,6 +457,8 @@ export interface Incident {
   is_randomized_mac: boolean;
   correlated_mac: string | null;
   alert_ids: number[];
+  status?: string;
+  disposition?: string | null;
 }
 
 export interface IncidentCounts {
@@ -427,12 +491,138 @@ export interface IncidentDetail {
 
 // --- Incident endpoints ---
 
-export async function fetchIncidents(): Promise<{ incidents: Incident[]; counts: IncidentCounts }> {
-  return apiFetch("/api/incidents");
+export async function fetchIncidents(includeResolved = false): Promise<{ incidents: Incident[]; counts: IncidentCounts }> {
+  const params = includeResolved ? "?include_resolved=true" : "";
+  return apiFetch(`/api/incidents${params}`);
+}
+
+export async function reopenIncident(id: string) {
+  return apiFetch(`/api/incidents/${encodeURIComponent(id)}/reopen`, { method: "POST" });
 }
 
 export async function fetchIncidentDetail(id: string): Promise<IncidentDetail> {
   return apiFetch(`/api/incidents/${encodeURIComponent(id)}/detail`);
+}
+
+// --- Detections Dashboard Types ---
+
+export interface IncidentStats {
+  severity: {
+    threat: number;
+    suspicious: number;
+    informational: number;
+    total: number;
+  };
+  trends: {
+    threat: { change: number; percentage: number; direction: "up" | "down" | "flat" };
+    suspicious: { change: number; percentage: number; direction: "up" | "down" | "flat" };
+    informational: { change: number; percentage: number; direction: "up" | "down" | "flat" };
+    total: { change: number; percentage: number; direction: "up" | "down" | "flat" };
+  };
+  categories: Array<{ name: string; count: number }>;
+}
+
+export interface TimelinePoint {
+  date: string;
+  threat: number;
+  suspicious: number;
+  informational: number;
+}
+
+export interface TopDevice {
+  hw_addr: string;
+  ip_addr: string | null;
+  vendor: string | null;
+  category: string | null;
+  finding_count: number;
+  bar_width: number;
+}
+
+// --- Detections Dashboard Endpoints ---
+
+export async function fetchIncidentStats(): Promise<IncidentStats> {
+  return apiFetch("/api/incidents/stats");
+}
+
+export async function fetchIncidentTimeline(): Promise<{ timeline: TimelinePoint[] }> {
+  return apiFetch("/api/incidents/timeline");
+}
+
+export async function fetchIncidentTopDevices(): Promise<{ devices: TopDevice[] }> {
+  return apiFetch("/api/incidents/top-devices");
+}
+
+export async function bulkIncidentAction(action: "resolve" | "suppress", ids: string[]) {
+  return apiFetch("/api/incidents/bulk", {
+    method: "POST",
+    body: JSON.stringify({ action, ids }),
+  });
+}
+
+// --- Findings Grouped Types ---
+
+export interface FindingGroup {
+  rule: string;
+  subtype: string;
+  severity: "threat" | "suspicious" | "informational";
+  device_count: number;
+  alert_count: number;
+  first_seen: string;
+  last_seen: string;
+  sparkline: number[];
+  devices: FindingGroupDevice[];
+  device_macs: string[];
+  related_groups: number;
+}
+
+export interface FindingGroupDevice {
+  hw_addr: string;
+  ip_addr: string | null;
+  vendor: string | null;
+  alert_count: number;
+  first_seen: string;
+  last_seen: string;
+  finding_ids: number[];
+  status: string;
+  has_notes: boolean;
+}
+
+// --- Findings Grouped Endpoints ---
+
+export async function fetchGroupedFindings(): Promise<{ groups: FindingGroup[] }> {
+  return apiFetch("/api/incidents/grouped");
+}
+
+export async function snoozeIncident(id: string, hours: number) {
+  return apiFetch(`/api/incidents/${encodeURIComponent(id)}/snooze`, {
+    method: "POST",
+    body: JSON.stringify({ hours }),
+  });
+}
+
+export async function snoozeRule(rule: string, hours: number) {
+  return apiFetch("/api/incidents/snooze-rule", {
+    method: "POST",
+    body: JSON.stringify({ rule, hours }),
+  });
+}
+
+export async function saveIncidentNotes(id: string, notes: string) {
+  return apiFetch(`/api/incidents/${encodeURIComponent(id)}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ notes }),
+  });
+}
+
+export async function resolveIncident(id: string, disposition: string) {
+  return apiFetch(`/api/incidents/${encodeURIComponent(id)}/resolve`, {
+    method: "POST",
+    body: JSON.stringify({ disposition }),
+  });
+}
+
+export function exportFindingsUrl(format: "json" | "csv"): string {
+  return `/api/incidents/export?format=${format}`;
 }
 
 // --- Threat Detection types ---
@@ -502,6 +692,23 @@ export async function fetchArpHistory(query: { mac?: string; ip?: string }): Pro
 
 // --- Attack Surface types ---
 
+export interface ToolRecommendation {
+  name: string;
+  command: string;
+  description?: string;
+  url?: string;
+  install_hint?: string;
+}
+
+export interface AffectedDevice {
+  mac: string;
+  ip?: string;
+  hostname?: string;
+  port?: string;
+  service_version?: string;
+  banner?: string;
+}
+
 export interface AttackFinding {
   rule_id: string;
   title: string;
@@ -509,8 +716,9 @@ export interface AttackFinding {
   description: string;
   severity: string;
   category: string;
-  affected_devices: Array<{ mac: string; ip?: string; hostname?: string; port?: string }>;
-  tools: Array<{ name: string; command: string; description?: string }>;
+  category_label?: string;
+  affected_devices: AffectedDevice[];
+  tools: ToolRecommendation[];
   evidence: string[];
   chain_ids?: string[];
 }
@@ -520,7 +728,7 @@ export interface ChainTrigger {
   name: string;
   severity: string;
   evidence?: string[];
-  affected_devices?: Array<{ mac: string; ip?: string; hostname?: string; port?: string }>;
+  affected_devices?: AffectedDevice[];
 }
 
 export interface AttackChain {
@@ -532,7 +740,7 @@ export interface AttackChain {
   interface?: string;
   triggered_by?: ChainTrigger[];
   steps?: Array<{ order: number; description: string }>;
-  tools?: Array<{ name: string; command: string; description?: string }>;
+  tools?: ToolRecommendation[];
 }
 
 export interface AttackSurfaceSummary {
@@ -579,6 +787,9 @@ export async function removeExclusion(type: string, value: string) {
 export interface LeethaSettings {
   web_host: string;
   web_port: number;
+  web_tls: boolean;
+  web_tls_cert: string;
+  web_tls_key: string;
   sync_interval: number;
   worker_count: number;
   db_batch_size: number;
@@ -593,8 +804,13 @@ export interface LeethaSettings {
 export interface DbInfo {
   db_path: string;
   db_size_bytes: number;
+  wal_size_bytes: number;
   device_count: number;
   cache_dir: string;
+  table_counts: Record<string, number>;
+  page_count: number;
+  page_size: number;
+  last_modified: number | null;
 }
 
 // --- Settings endpoints ---
@@ -631,6 +847,17 @@ export async function importSettings(data: Record<string, unknown>): Promise<Lee
   return apiFetch("/api/settings/import", { method: "POST", body: JSON.stringify(data) });
 }
 
+export interface BrowseResult {
+  current: string;
+  parent: string | null;
+  entries: { name: string; path: string; is_dir: boolean; size: number | null }[];
+}
+
+export async function browseFilesystem(path?: string): Promise<BrowseResult> {
+  const params = path ? `?path=${encodeURIComponent(path)}` : "";
+  return apiFetch(`/api/settings/browse${params}`);
+}
+
 export async function fetchDbInfo(): Promise<DbInfo> {
   return apiFetch("/api/settings/db-info");
 }
@@ -644,6 +871,20 @@ export async function runQuery(sql: string) {
 
 export async function clearDatabase() {
   return apiFetch<{ status: string }>("/api/settings/db", { method: "DELETE" });
+}
+
+export async function exportDatabase(format: "sqlite" | "sql") {
+  const res = await fetch(`/api/settings/db-export?format=${format}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Export failed: ${res.status} ${res.statusText}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = format === "sqlite" ? "leetha.db" : "leetha-dump.sql";
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // --- Auth ---
@@ -711,6 +952,23 @@ export async function fetchTopology(): Promise<{
   return apiFetch("/api/topology");
 }
 
+export async function createTopologyOverride(childMac: string, parentMac: string) {
+  return apiFetch<{ status: string; child_mac: string; parent_mac: string }>(
+    "/api/topology/override",
+    { method: "PUT", body: JSON.stringify({ child_mac: childMac, parent_mac: parentMac }) },
+  );
+}
+
+export async function deleteTopologyOverride(mac: string) {
+  return apiFetch<{ status: string }>(`/api/topology/override/${mac}`, { method: "DELETE" });
+}
+
+export async function fetchTopologyOverrides(): Promise<{
+  overrides: Array<{ child_mac: string; parent_mac: string }>;
+}> {
+  return apiFetch("/api/topology/overrides");
+}
+
 export interface TimelineEvent {
   timestamp: string;
   type: "first_seen" | "observation" | "classification" | "ip_change" | "finding";
@@ -767,4 +1025,115 @@ export async function updateNotificationSettings(settings: Partial<NotificationS
 
 export async function testNotification(): Promise<{ status: string; message?: string }> {
   return apiFetch("/api/settings/notifications/test", { method: "POST" });
+}
+
+// --- Remote Sensors ---
+
+export interface RemoteSensorInterface {
+  name: string;
+  desc?: string;
+  addrs?: string[];
+  up?: boolean;
+}
+
+export interface RemoteSensor {
+  name: string;
+  remote_ip: string;
+  connected_at: number;
+  uptime: number;
+  packets: number;
+  bytes: number;
+  remote_interfaces: RemoteSensorInterface[];
+  selected_interfaces: string[];
+  state: "idle" | "capturing";
+  interface_stats: Record<string, { packets: number; bytes: number }>;
+  interface_errors: Record<string, string>;
+  last_heartbeat: number | null;
+}
+
+export async function fetchRemoteSensors(): Promise<RemoteSensor[]> {
+  return apiFetch<RemoteSensor[]>("/api/remote/sensors");
+}
+
+export async function disconnectRemoteSensor(name: string): Promise<void> {
+  await apiFetch(`/api/remote/sensors/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function setSensorInterfaces(
+  name: string,
+  interfaces: string[]
+): Promise<void> {
+  await apiFetch(`/api/remote/sensors/${encodeURIComponent(name)}/interfaces`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ interfaces }),
+  });
+}
+
+export async function stopSensorCapture(name: string): Promise<void> {
+  await apiFetch(`/api/remote/sensors/${encodeURIComponent(name)}/interfaces`, {
+    method: "DELETE",
+  });
+}
+
+// --- Sensor Build ---
+
+export interface BuildTarget {
+  id: string;
+  label: string;
+  triple: string;
+  default_buffer_mb: number;
+}
+
+export interface BuildRequestBody {
+  name: string;
+  server: string;
+  target: string;
+  buffer_size_mb: number;
+}
+
+export interface ServerAddress {
+  interface: string;
+  address: string;
+}
+
+export async function fetchBuildTargets(): Promise<BuildTarget[]> {
+  return apiFetch<BuildTarget[]>("/api/remote/targets");
+}
+
+export async function fetchServerAddresses(): Promise<ServerAddress[]> {
+  return apiFetch<ServerAddress[]>("/api/remote/server-addresses");
+}
+
+export async function checkBuildPrerequisites(target: string): Promise<{ ok: boolean; message: string }> {
+  return apiFetch(`/api/remote/build/check?target=${encodeURIComponent(target)}`);
+}
+
+export async function checkSensorName(name: string): Promise<{ exists: boolean; name: string }> {
+  return apiFetch(`/api/remote/build/check-name?name=${encodeURIComponent(name)}`);
+}
+
+// --- Build History ---
+
+export interface BuildHistoryEntry {
+  id: string;
+  name: string;
+  server: string;
+  target: string;
+  buffer_size_mb: number;
+  built_at: string;
+  success: boolean;
+  download_id: string | null;
+}
+
+export async function fetchBuildHistory(): Promise<BuildHistoryEntry[]> {
+  return apiFetch<BuildHistoryEntry[]>("/api/remote/build-history");
+}
+
+export async function deleteBuildHistory(buildId: string): Promise<void> {
+  await apiFetch(`/api/remote/build-history/${encodeURIComponent(buildId)}`, {
+    method: "DELETE",
+  });
 }

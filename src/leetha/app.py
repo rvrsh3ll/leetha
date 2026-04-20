@@ -107,7 +107,8 @@ class LeethaApp:
             self.config.interfaces = iface_configs
 
         self.capture_engine = CaptureEngine(interfaces=iface_configs)
-        self.packet_queue: asyncio.Queue[ParsedPacket] = asyncio.Queue()
+        import queue as _queue_mod
+        self.packet_queue: _queue_mod.Queue = _queue_mod.Queue()
         self.event_subscribers: list[asyncio.Queue] = []
         try:
             from leetha.notifications import NotificationDispatcher
@@ -124,8 +125,13 @@ class LeethaApp:
         self._analysis_executor = ThreadPoolExecutor(max_workers=1)
         self.probe_scheduler: ProbeScheduler | None = None
 
+        # Remote sensor management
+        from leetha.capture.remote.server import RemoteSensorManager
+        self._remote_sensor_manager = RemoteSensorManager()
+
         # Sharded pipeline (only when worker_count > 1)
         self._router: PacketRouter | None = None
+        self._worker_pipelines: list[Pipeline] = []  # per-worker pipeline instances
         self._tasks: list[asyncio.Task] = []
 
     async def start(self):
@@ -160,6 +166,7 @@ class LeethaApp:
             on_dhcp=self._on_dhcp_packet,
             on_gateway_hint=self._on_gateway_hint,
             is_local_mac=self.is_local_device,
+            on_new_host=self._on_new_host_discovered,
         )
 
         self._running = True
@@ -185,10 +192,49 @@ class LeethaApp:
         # Start periodic analysis loop (stale source checks, etc.)
         self._tasks.append(asyncio.create_task(self._analysis_loop()))
 
+        # Watchdog: monitor the process loop and restart it if it dies
+        self._tasks.append(asyncio.create_task(self._watchdog()))
+
         # Start Unix socket server if configured
         if self.config.socket_path:
             self._tasks.append(asyncio.create_task(
                 self.start_unix_socket(self.config.socket_path)))
+
+        # Start the packet processing thread — needed for both local capture
+        # and remote sensor packets.  Must start before capture or sensor
+        # listener so nothing is lost.
+        if not getattr(self, "_drain_thread", None) or not self._drain_thread.is_alive():
+            import threading
+            self._drain_thread = threading.Thread(
+                target=self._process_thread, daemon=True,
+                name="process-thread")
+            self._drain_thread.start()
+
+        # Start remote sensor listener (all modes — console, live, web)
+        from leetha.capture.remote.listener import start_sensor_listener
+        await start_sensor_listener(self, port=8443)
+
+        # Periodic flush of custom pattern hit counters
+        async def _flush_hits_loop():
+            from leetha.fingerprint.lookup import flush_pattern_hits
+            while self._running:
+                await asyncio.sleep(60)
+                flush_pattern_hits(self.config.data_dir)
+
+        self._tasks.append(asyncio.create_task(_flush_hits_loop()))
+
+        # Periodic unsnooze of expired snoozed findings
+        async def _unsnooze_loop():
+            while self._running:
+                await asyncio.sleep(30)
+                try:
+                    count = await self.store.findings.unsnooze_expired()
+                    if count > 0:
+                        logger.info("Unsnoozed %d expired findings", count)
+                except Exception as e:
+                    logger.debug("Unsnooze check failed: %s", e)
+
+        self._tasks.append(asyncio.create_task(_unsnooze_loop()))
 
         # If interfaces were provided at construction time, start capture
         # immediately (CLI mode with -i flag).
@@ -222,7 +268,7 @@ class LeethaApp:
             return False
 
         loop = getattr(self, "_app_loop", None) or asyncio.get_running_loop()
-        self.capture_engine.start(self.packet_queue, loop)
+        self.capture_engine.start(self.packet_queue, loop)  # loop kept for compat
 
         # Detect local MACs from capture interfaces for self-identification
         self._detect_local_macs()
@@ -230,19 +276,294 @@ class LeethaApp:
         # Re-evaluate unknown devices 60s after capture starts
         self._tasks.append(asyncio.create_task(self._reevaluate_unknown_devices()))
 
-        if self.config.worker_count > 1:
-            self._router = PacketRouter(num_workers=self.config.worker_count)
-            self._tasks.append(asyncio.create_task(self._dispatch_loop()))
-            for shard_id in range(self.config.worker_count):
-                self._tasks.append(asyncio.create_task(
-                    self._worker_loop(shard_id, self._router.workers[shard_id])
-                ))
-        else:
-            self._tasks.append(asyncio.create_task(self._process_loop()))
+        # Ensure the process thread is running (may already be started by
+        # app.start() for remote sensor support).
+        if not getattr(self, "_drain_thread", None) or not self._drain_thread.is_alive():
+            import threading
+            self._drain_thread = threading.Thread(
+                target=self._process_thread, daemon=True,
+                name="process-thread")
+            self._drain_thread.start()
 
         logger.info("Capture started on %s",
                      ", ".join(i.name for i in self.config.interfaces))
         return True
+
+    def _on_task_done(self, task: asyncio.Task) -> None:
+        """Callback when a background task finishes — log if it crashed."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            logger.error("Background task %s crashed: %s",
+                         task.get_name(), exc, exc_info=exc)
+
+    @staticmethod
+    def _broadcast_finding_threadsafe(finding, subscribers, main_loop):
+        """Push a finding_created event to WS subscribers from the process thread."""
+        if not subscribers or not main_loop:
+            return
+        event = {
+            "type": "finding_created",
+            "finding": {
+                "hw_addr": finding.hw_addr,
+                "rule": finding.rule.value if hasattr(finding.rule, "value") else str(finding.rule),
+                "severity": finding.severity.value if hasattr(finding.severity, "value") else str(finding.severity),
+                "message": finding.message,
+                "timestamp": finding.timestamp.isoformat() if finding.timestamp else None,
+            },
+        }
+        for sub in list(subscribers):
+            try:
+                main_loop.call_soon_threadsafe(sub.put_nowait, event)
+            except (RuntimeError, asyncio.QueueFull):
+                pass
+
+    def _process_thread(self):
+        """Dedicated thread for packet processing with its own event loop
+        and its own database connection.
+
+        Completely independent of the main background event loop — can't be
+        frozen by DB contention, analysis tasks, or WebSocket handlers.
+        """
+        import asyncio as _aio
+        import queue as _queue_mod
+        import traceback as _tb
+
+        try:
+            loop = _aio.new_event_loop()
+            _aio.set_event_loop(loop)
+
+            from leetha.store.store import Store
+            from leetha.core.pipeline import Pipeline
+            thread_store = Store(self.config.db_path)
+            loop.run_until_complete(thread_store.initialize())
+            logger.info("Process thread initialized (db=%s)", self.config.db_path)
+        except Exception as e:
+            logger.error("Process thread init failed: %s", e, exc_info=True)
+            return
+
+        import leetha.processors  # noqa: F401  — ensure all processors registered
+
+        # Initialize a thread-local spoofing detector with its own DB
+        # connection so security callbacks can run in this thread.
+        from leetha.store.database import Database as _LegacyDB
+        from leetha.analysis.spoofing import SpoofingDetector as _SD
+        thread_legacy_db = _LegacyDB(self.config.db_path)
+        loop.run_until_complete(thread_legacy_db.initialize())
+        thread_spoof = _SD(thread_legacy_db)
+        loop.run_until_complete(thread_spoof.initialize())
+
+        thread_pipeline = Pipeline(
+            store=thread_store,
+            is_local_mac=self.is_local_device,
+        )
+
+        # Reference to the main event loop for thread-safe event dispatch
+        main_loop = getattr(self, "_app_loop", None)
+
+        def _sanitize(obj):
+            """Convert bytes to str for JSON serialization."""
+            if isinstance(obj, bytes):
+                return obj.decode("utf-8", errors="replace")
+            if isinstance(obj, dict):
+                return {k: _sanitize(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_sanitize(v) for v in obj]
+            return obj
+
+        def _push_event(pkt, verdict=None):
+            """Thread-safe push of a packet event to WebSocket subscribers."""
+            if not self.event_subscribers or main_loop is None:
+                return
+            packet_info = {
+                "protocol": pkt.protocol,
+                "src_mac": pkt.hw_addr,
+                "src_ip": pkt.ip_addr,
+                "dst_ip": getattr(pkt, "target_ip", None),
+                "fields": _sanitize(pkt.fields),
+                "interface": pkt.interface,
+                "timestamp": pkt.captured_at.isoformat() if hasattr(pkt, "captured_at") and pkt.captured_at else None,
+            }
+            verdict_data = verdict.to_dict() if verdict and hasattr(verdict, "to_dict") else {}
+            event = {
+                "type": "device_update",
+                "mac": pkt.hw_addr,
+                "verdict": verdict_data,
+                "packet": packet_info,
+            }
+            for sub in list(self.event_subscribers):
+                try:
+                    main_loop.call_soon_threadsafe(sub.put_nowait, event)
+                except (RuntimeError, asyncio.QueueFull):
+                    pass
+
+        def _run_arp_security(ev_loop, pkt, spoof_det, store):
+            """Run ARP spoofing detection synchronously in the process thread."""
+            from leetha.store.models import Finding, FindingRule, AlertSeverity, AlertType
+            alerts = ev_loop.run_until_complete(spoof_det.process_arp(
+                src_mac=pkt.hw_addr,
+                src_ip=pkt.ip_addr or "",
+                dst_mac=getattr(pkt, "target_hw", None) or "ff:ff:ff:ff:ff:ff",
+                dst_ip=getattr(pkt, "target_ip", None) or "",
+                op=pkt.fields.get("op", 0),
+                interface=pkt.interface or "unknown",
+            ))
+            _MAP = {
+                AlertType.SPOOFING: FindingRule.IDENTITY_SHIFT,
+                AlertType.MAC_SPOOFING: FindingRule.IDENTITY_SHIFT,
+            }
+            for alert in alerts:
+                finding = Finding(
+                    hw_addr=alert.device_mac,
+                    rule=_MAP.get(alert.alert_type, FindingRule.IDENTITY_SHIFT),
+                    severity=AlertSeverity(alert.severity.value),
+                    message=alert.message,
+                )
+                ev_loop.run_until_complete(store.findings.add(finding))
+                self._broadcast_finding_threadsafe(
+                    finding, self.event_subscribers, main_loop)
+
+        def _run_device_security(ev_loop, hw_addr, verdict, spoof_det, store, pipeline):
+            """Run device spoofing / fingerprint drift checks in process thread."""
+            from leetha.store.models import Device, Finding, FindingRule, AlertSeverity, AlertType
+            host = ev_loop.run_until_complete(store.hosts.find_by_addr(hw_addr))
+            if not host:
+                return
+            device = Device(
+                mac=hw_addr,
+                ip_v4=host.ip_addr,
+                ip_v6=host.ip_v6,
+                manufacturer=verdict.vendor,
+                device_type=verdict.category,
+                os_family=verdict.platform,
+                os_version=verdict.platform_version,
+                hostname=verdict.hostname,
+                confidence=verdict.certainty,
+                is_randomized_mac=host.mac_randomized,
+            )
+            oui_vendor = pipeline._oui_vendors.get(hw_addr)
+
+            async def _snap_read(mac, limit=1):
+                return await store.snapshots.get_latest(mac, limit)
+            async def _snap_write(hw_addr, **kw):
+                await store.snapshots.add(hw_addr=hw_addr, **kw)
+
+            alerts = ev_loop.run_until_complete(
+                spoof_det.process_device_update(
+                    device, oui_vendor=oui_vendor,
+                    snapshot_reader=_snap_read,
+                    snapshot_writer=_snap_write))
+            _MAP = {
+                AlertType.SPOOFING: FindingRule.IDENTITY_SHIFT,
+                AlertType.MAC_SPOOFING: FindingRule.IDENTITY_SHIFT,
+            }
+            for alert in alerts:
+                finding = Finding(
+                    hw_addr=alert.device_mac,
+                    rule=_MAP.get(alert.alert_type, FindingRule.IDENTITY_SHIFT),
+                    severity=AlertSeverity(alert.severity.value),
+                    message=alert.message,
+                )
+                ev_loop.run_until_complete(store.findings.add(finding))
+                self._broadcast_finding_threadsafe(
+                    finding, self.event_subscribers, main_loop)
+
+        processed = 0
+        errors = 0
+        try:
+            while self._running:
+                try:
+                    pkt = self.packet_queue.get(timeout=0.25)
+                except _queue_mod.Empty:
+                    continue
+                except Exception:
+                    continue
+
+                try:
+                    loop.run_until_complete(thread_pipeline.process(pkt))
+                    processed += 1
+
+                    # Fetch verdict for WS event and security checks
+                    verdict = None
+                    try:
+                        verdict = loop.run_until_complete(
+                            thread_store.verdicts.find_by_addr(pkt.hw_addr))
+                        _push_event(pkt, verdict)
+                    except Exception:
+                        _push_event(pkt)
+
+                    # --- Security callbacks (run in process thread) ---
+
+                    # ARP spoofing detection
+                    if pkt.protocol == "arp":
+                        try:
+                            _run_arp_security(loop, pkt, thread_spoof, thread_store)
+                        except Exception:
+                            logger.debug("Thread ARP check failed", exc_info=True)
+
+                    # Device spoofing / fingerprint drift (on every verdict)
+                    if verdict and verdict.certainty > 0:
+                        try:
+                            _run_device_security(
+                                loop, pkt.hw_addr, verdict,
+                                thread_spoof, thread_store, thread_pipeline)
+                        except Exception:
+                            logger.debug("Thread spoofing check failed", exc_info=True)
+
+                    # Gateway learning from DHCP/RA
+                    if pkt.protocol == "dhcpv4":
+                        raw_opts = pkt.fields.get("raw_options", {})
+                        msg_type = raw_opts.get("message-type")
+                        if msg_type in (2, 5) and pkt.ip_addr:
+                            try:
+                                loop.run_until_complete(
+                                    thread_spoof.learn_gateway(
+                                        pkt.hw_addr, pkt.ip_addr, "dhcp_server",
+                                        pkt.interface or ""))
+                            except Exception:
+                                pass
+                except Exception:
+                    errors += 1
+                    if errors <= 5 or errors % 100 == 0:
+                        logger.warning("Process thread error #%d", errors, exc_info=True)
+        except Exception:
+            logger.error("Process thread crashed", exc_info=True)
+        finally:
+            try:
+                loop.run_until_complete(thread_store.close())
+                loop.run_until_complete(thread_legacy_db.close())
+                loop.close()
+            except Exception:
+                pass
+
+    async def _watchdog(self):
+        """Monitor the process thread and restart it if it dies.
+
+        The process thread is the critical path for all packet processing.
+        If it dies for any reason, no new devices appear in the inventory.
+        This watchdog checks every 10 seconds and restarts it.
+        """
+        await asyncio.sleep(5)  # let everything initialize
+
+        try:
+            while self._running:
+                await asyncio.sleep(10)
+                thread = getattr(self, "_drain_thread", None)
+                if thread is None or not thread.is_alive():
+                    with open("/tmp/leetha_watchdog.txt", "a") as f:
+                        import datetime as _dt
+                        f.write(f"{_dt.datetime.now().isoformat()} Process thread DEAD, restarting\n")
+                    import threading
+                    self._drain_thread = threading.Thread(
+                        target=self._process_thread, daemon=True,
+                        name="process-thread")
+                    self._drain_thread.start()
+                    with open("/tmp/leetha_watchdog.txt", "a") as f:
+                        import datetime as _dt
+                        f.write(f"{_dt.datetime.now().isoformat()} Process thread RESTARTED\n")
+        except asyncio.CancelledError:
+            return
 
     def _preload_caches(self):
         """Preload large Huginn JSON caches in a background thread.
@@ -315,35 +636,48 @@ class LeethaApp:
         return mac.upper() in self._local_macs
 
     async def stop(self):
-        """Stop capture and close DB. Designed for fast shutdown."""
+        """Stop capture and close DB. Designed for immediate shutdown."""
         self._running = False
+
+        # 1. Stop capture threads first (signals halt flags)
         self.capture_engine.stop()
+
+        # 2. Cancel all async tasks immediately
+        for task in self._tasks:
+            task.cancel()
+
+        # 3. Stop remote sensor listener
+        try:
+            from leetha.capture.remote.listener import stop_sensor_listener
+            await asyncio.wait_for(stop_sensor_listener(), timeout=1.0)
+        except (asyncio.TimeoutError, Exception):
+            pass
+
+        # 4. Shutdown executors without waiting
         self._analysis_executor.shutdown(wait=False, cancel_futures=True)
         if self.probe_scheduler:
             try:
                 self.probe_scheduler.shutdown()
             except Exception:
                 pass
-        # Cancel all background tasks with timeout
-        for task in self._tasks:
-            task.cancel()
+
+        # 5. Wait briefly for tasks to acknowledge cancellation
         if self._tasks:
             try:
                 await asyncio.wait_for(
                     asyncio.gather(*self._tasks, return_exceptions=True),
-                    timeout=2.0,
+                    timeout=0.5,
                 )
             except asyncio.TimeoutError:
                 pass
         self._tasks.clear()
-        try:
-            await self.store.close()
-        except Exception:
-            pass
-        try:
-            await self.db.close()
-        except Exception:
-            pass
+
+        # 6. Close DB connections
+        for closeable in (self.store, self.db):
+            try:
+                await asyncio.wait_for(closeable.close(), timeout=0.5)
+            except (asyncio.TimeoutError, Exception):
+                pass
 
     def subscribe(self) -> asyncio.Queue:
         """Subscribe to real-time device/alert events. Returns a bounded event queue."""
@@ -411,7 +745,7 @@ class LeethaApp:
         try:
             server = await asyncio.start_unix_server(_handle_client, path=socket_path)
             # Make socket world-readable so non-root clients can connect
-            os.chmod(socket_path, 0o666)
+            os.chmod(socket_path, 0o660)
             logger.info("Unix socket listening on %s", socket_path)
             self._unix_socket_server = server
             self._unix_socket_path = socket_path
@@ -428,21 +762,13 @@ class LeethaApp:
                 pass
 
     async def _process_loop(self):
-        """Single-worker packet processing loop using new Pipeline."""
-        error_count = 0
+        """Placeholder — kept for backward compatibility.
+        The actual processing now happens in _process_thread().
+        """
+        # Just keep this task alive so the watchdog doesn't restart it
         try:
             while self._running:
-                try:
-                    packet = await asyncio.wait_for(self.packet_queue.get(), timeout=1.0)
-                except asyncio.TimeoutError:
-                    continue
-                try:
-                    await self.pipeline.process(packet)
-                except Exception:
-                    error_count += 1
-                    if error_count <= 5 or error_count % 100 == 0:
-                        logger.warning("Pipeline error #%d processing %s",
-                                      error_count, packet.protocol, exc_info=True)
+                await asyncio.sleep(10)
         except asyncio.CancelledError:
             return
 
@@ -489,16 +815,26 @@ class LeethaApp:
                 # Update Prometheus metrics
                 try:
                     from leetha.metrics import update_metrics
-                    from datetime import datetime, timedelta
+                    from datetime import datetime, timedelta, timezone
                     device_count = await self.store.hosts.count()
                     alert_count = await self.store.findings.count_active()
-                    threshold = datetime.now() - timedelta(minutes=5)
+                    threshold = datetime.now(timezone.utc) - timedelta(minutes=5)
                     all_hosts = await self.store.hosts.find_all()
-                    online = sum(1 for h in all_hosts if h.last_active and h.last_active >= threshold)
+                    def _aware(dt):
+                        return dt.replace(tzinfo=timezone.utc) if dt and dt.tzinfo is None else dt
+                    online = sum(1 for h in all_hosts if h.last_active and _aware(h.last_active) >= threshold)
                     capture_count = len(self.capture_engine.interfaces)
                     await update_metrics(device_count, online, alert_count, capture_count, 0)
                 except Exception:
                     logger.debug("Metrics update failed", exc_info=True)
+
+                # WAL checkpoint every 5 minutes (cycle 10 × 30s) to prevent
+                # unbounded WAL growth when the process thread writes continuously.
+                if cycle % 10 == 0:
+                    try:
+                        await self.store.connection.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                    except Exception:
+                        logger.debug("WAL checkpoint failed", exc_info=True)
 
                 # Prune old sightings every 10 minutes (cycle 20 × 30s)
                 if cycle % 20 == 0:
@@ -556,11 +892,11 @@ class LeethaApp:
 
     async def _check_infra_offline(self):
         """Check for infrastructure devices gone offline using new Store."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
         from leetha.store.models import Finding, FindingRule, AlertSeverity
         from leetha.topology import _normalize_device_type, _INFRA_TYPES
 
-        threshold = datetime.now() - timedelta(minutes=5)
+        threshold = datetime.now(timezone.utc) - timedelta(minutes=5)
         verdicts = await self.store.verdicts.find_all(limit=1000)
 
         for v in verdicts:
@@ -577,6 +913,8 @@ class LeethaApp:
                 continue
 
             last_seen = host.last_active
+            if last_seen is not None and last_seen.tzinfo is None:
+                last_seen = last_seen.replace(tzinfo=timezone.utc)
             if last_seen is None or last_seen >= threshold:
                 continue
 
@@ -598,7 +936,9 @@ class LeethaApp:
             except Exception:
                 pass
 
-            minutes_ago = int((datetime.now() - last_seen).total_seconds() / 60)
+            if last_seen.tzinfo is None:
+                last_seen = last_seen.replace(tzinfo=timezone.utc)
+            minutes_ago = int((datetime.now(timezone.utc) - last_seen).total_seconds() / 60)
             is_gateway = normalized in ("router", "gateway", "firewall")
             severity = AlertSeverity.CRITICAL if is_gateway else AlertSeverity.WARNING
             label = v.hostname or v.vendor or v.hw_addr
@@ -713,7 +1053,8 @@ class LeethaApp:
             return
 
     async def _worker_loop(self, shard_id: int, queue):
-        """Process packets from a shard queue using new Pipeline."""
+        """Process packets from a shard queue using per-worker Pipeline."""
+        worker_pipeline = self._worker_pipelines[shard_id]
         try:
             while self._running:
                 try:
@@ -721,7 +1062,7 @@ class LeethaApp:
                 except asyncio.TimeoutError:
                     continue
                 try:
-                    await self.pipeline.process(packet)
+                    await worker_pipeline.process(packet)
                 except Exception:
                     logger.debug("Worker %d pipeline failed", shard_id, exc_info=True)
         except asyncio.CancelledError:
@@ -758,20 +1099,61 @@ class LeethaApp:
 
     # -- Pipeline side-effect callbacks ----------------------------------
 
+    async def _on_new_host_discovered(self, hw_addr, host, packet):
+        """Emit WebSocket event when a new device is first discovered.
+
+        This fires immediately on first sighting — before any verdict is
+        computed — so the UI updates in real time for every new MAC.
+        """
+        event = {
+            "type": "device_discovered",
+            "mac": hw_addr,
+            "device": {
+                "mac": hw_addr,
+                "ip_v4": host.ip_addr,
+                "ip_v6": host.ip_v6,
+                "alert_status": host.disposition,
+                "is_randomized_mac": host.mac_randomized,
+            },
+        }
+        for sub in self.event_subscribers:
+            try:
+                sub.put_nowait(event)
+            except asyncio.QueueFull:
+                try:
+                    sub.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                try:
+                    sub.put_nowait(event)
+                except asyncio.QueueFull:
+                    pass
+
     async def _on_verdict_event(self, hw_addr, verdict, packet):
         """Emit WebSocket event after verdict computed, run spoofing checks."""
         # Run MAC spoofing / fingerprint drift detection on every verdict
         await self._check_device_spoofing(hw_addr, verdict)
 
-        # Include packet info for the console live stream
+        # Include packet info for the console live stream.
+        # Sanitize fields: convert bytes to strings so JSON serialization
+        # doesn't crash the WebSocket handler.
         packet_info = None
         if packet:
+            def _sanitize(obj):
+                if isinstance(obj, bytes):
+                    return obj.decode("utf-8", errors="replace")
+                if isinstance(obj, dict):
+                    return {k: _sanitize(v) for k, v in obj.items()}
+                if isinstance(obj, (list, tuple)):
+                    return [_sanitize(v) for v in obj]
+                return obj
+
             packet_info = {
                 "protocol": packet.protocol,
                 "src_mac": packet.hw_addr,
                 "src_ip": packet.ip_addr,
                 "dst_ip": getattr(packet, "target_ip", None),
-                "fields": packet.fields,
+                "fields": _sanitize(packet.fields),
                 "interface": packet.interface,
                 "timestamp": packet.captured_at.isoformat() if hasattr(packet, "captured_at") and packet.captured_at else None,
             }

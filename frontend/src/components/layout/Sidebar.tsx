@@ -300,6 +300,11 @@ export function Sidebar({ wsStatus }: SidebarProps) {
             Sign out
           </button>
         )}
+
+        {/* Version */}
+        {!collapsed && (
+          <span className="text-[9px] text-muted-foreground/30 tracking-wider">v1.0.0</span>
+        )}
       </div>
     </aside>
   );

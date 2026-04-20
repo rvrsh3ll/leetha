@@ -1290,6 +1290,8 @@ class SignatureMatcher:
                     raw_data={"query_name": query_name, "service": res.get("service"), "suffix": netbios_suffix},
                 )
         res = match_llmnr_query(query_name)
+        if not res or not res.get("os_family"):
+            return None
         conf = res["confidence"]
         return FingerprintMatch(
             source="netbios", match_type="heuristic",
@@ -1540,7 +1542,7 @@ class SignatureMatcher:
                 os_family="Fire OS",
                 raw_data={"user_agent": ua_string[:200]},
             )
-        if "Tizen/" in ua_string or "SmartTV" in ua_string or "SMART-TV" in ua_string:
+        if "Tizen/" in ua_string:
             return FingerprintMatch(
                 source="http_useragent",
                 match_type="pattern",
@@ -1548,6 +1550,17 @@ class SignatureMatcher:
                 device_type="smart_tv",
                 manufacturer="Samsung",
                 os_family="Tizen",
+                raw_data={"user_agent": ua_string[:200]},
+            )
+        if "SmartTV" in ua_string or "SMART-TV" in ua_string:
+            # Generic smart TV UA -- could be any manufacturer/platform
+            return FingerprintMatch(
+                source="http_useragent",
+                match_type="pattern",
+                confidence=0.70,
+                device_type="smart_tv",
+                manufacturer=None,
+                os_family=None,
                 raw_data={"user_agent": ua_string[:200]},
             )
         if "LG NetCast" in ua_string or "Web0S" in ua_string or "webOS" in ua_string:
@@ -1674,7 +1687,7 @@ class SignatureMatcher:
         (r"\.icloud\.com$", "Apple", None, "iOS/macOS"),
         # Google
         (r"\.google\.com$", "Google", None, None),
-        (r"clients\d+\.google\.com", "Google", None, "Android"),
+        (r"\bclients\d+\.google\.com$", "Google", None, "Android"),
         (r"connectivitycheck\.gstatic\.com", "Google", None, "Android"),
         # Amazon
         (r"\.amazon\.com$", "Amazon", None, None),
@@ -1852,7 +1865,59 @@ def load_custom_patterns(data_dir: Path) -> dict:
 
 def save_custom_patterns(data_dir: Path, patterns: dict) -> None:
     """Persist user-defined patterns to ``data_dir/custom_patterns.json``."""
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    # Ensure every entry has hits and created_at
+    for key, entries in patterns.items():
+        if isinstance(entries, list):
+            for entry in entries:
+                entry.setdefault("hits", 0)
+                entry.setdefault("created_at", now)
+        elif isinstance(entries, dict):
+            for _k, entry in entries.items():
+                if isinstance(entry, dict):
+                    entry.setdefault("hits", 0)
+                    entry.setdefault("created_at", now)
+
     data_dir.mkdir(parents=True, exist_ok=True)
     target = data_dir / "custom_patterns.json"
     with open(target, "w", encoding="utf-8") as fh:
         json.dump(patterns, fh, indent=2)
+
+
+# ── Debounced hit counter for custom patterns ──
+
+import threading as _threading
+
+_hit_buffer: dict[tuple[str, str], int] = {}
+_hit_lock = _threading.Lock()
+
+
+def record_pattern_hit(pattern_type: str, pattern: str) -> None:
+    """Record a hit in memory (flushed periodically by the app)."""
+    with _hit_lock:
+        key = (pattern_type, pattern)
+        _hit_buffer[key] = _hit_buffer.get(key, 0) + 1
+
+
+def flush_pattern_hits(data_dir: Path) -> None:
+    """Flush accumulated hits to disk."""
+    global _hit_buffer
+    with _hit_lock:
+        if not _hit_buffer:
+            return
+        buffer = _hit_buffer.copy()
+        _hit_buffer.clear()
+
+    patterns = load_custom_patterns(data_dir)
+    for (ptype, pattern), count in buffer.items():
+        entries = patterns.get(ptype, [])
+        if isinstance(entries, list):
+            for entry in entries:
+                if entry.get("pattern") == pattern:
+                    entry["hits"] = entry.get("hits", 0) + count
+        elif isinstance(entries, dict):
+            if pattern in entries:
+                entries[pattern]["hits"] = entries[pattern].get("hits", 0) + count
+    save_custom_patterns(data_dir, patterns)

@@ -21,6 +21,17 @@ class NotificationDispatcher:
         self._urls = urls
         self._min_level = _SEVERITY_ORDER.get(min_severity, 2)
         self._recent: dict[str, float] = {}  # "rule:mac" -> last_sent timestamp
+        # Build the Apprise instance once at construction
+        self._apprise = apprise.Apprise()
+        for url in urls:
+            self._apprise.add(url)
+
+    def update_urls(self, urls: list[str]) -> None:
+        """Replace notification URLs and rebuild the Apprise instance."""
+        self._urls = urls
+        self._apprise = apprise.Apprise()
+        for url in urls:
+            self._apprise.add(url)
 
     def format(self, finding: Finding) -> tuple[str, str]:
         """Return (title, body) for a finding notification."""
@@ -48,16 +59,19 @@ class NotificationDispatcher:
         rule_str = finding.rule.value if hasattr(finding.rule, "value") else str(finding.rule)
         dedup_key = f"{rule_str}:{finding.hw_addr}"
         now = time.monotonic()
-        last = self._recent.get(dedup_key, 0)
-        if now - last < _COOLDOWN_SECONDS:
+
+        # Prune stale entries to prevent unbounded growth
+        stale = [k for k, v in self._recent.items() if now - v > _COOLDOWN_SECONDS]
+        for k in stale:
+            del self._recent[k]
+
+        last = self._recent.get(dedup_key)
+        if last is not None and (now - last) < _COOLDOWN_SECONDS:
             return
         self._recent[dedup_key] = now
 
         title, body = self.format(finding)
-        ap = apprise.Apprise()
-        for url in self._urls:
-            ap.add(url)
         try:
-            await ap.async_notify(title=title, body=body)
+            await self._apprise.async_notify(title=title, body=body)
         except Exception:
             logger.debug("Notification dispatch failed", exc_info=True)

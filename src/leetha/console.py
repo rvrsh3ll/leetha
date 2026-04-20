@@ -10,13 +10,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+# Line editing for input(): stdlib readline on Unix; on Windows, the
+# pyreadline3 package installs a `readline` shim on import so this same
+# import works there too. If neither is present, input() still works —
+# we just skip tab-completion/history setup below.
 try:
-    import readline  # noqa: F401  — input() history/editing on Unix
+    import readline
 except ImportError:
-    try:
-        import pyreadline3  # noqa: F401  — Windows alternative
-    except ImportError:
-        pass  # No line editing — input() still works, just no history
+    readline = None  # type: ignore[assignment]
 import shlex
 import signal
 from datetime import datetime
@@ -92,6 +93,7 @@ _COMMANDS: list[tuple[str, list[str], str, str]] = [
     ("status",    ["st"],             "status",                            "Show system status"),
     ("start",     ["capture"],        "start | start web | start cli",     "Start capture, web dashboard, or live stream"),
     ("stop",      [],                 "stop",                              "Stop packet capture"),
+    ("sensors",   ["remote"],          "sensors",                           "List connected remote sensors"),
     ("probe",     [],                 "probe <status|enable|disable|run|list>", "Manage active probing"),
     ("clear",     ["cls"],            "clear",                             "Clear the terminal"),
     ("exit",      ["quit", "q"],      "exit",                              "Exit LEETHA (or Ctrl+C)"),
@@ -130,7 +132,7 @@ _COMMAND_SUBS: dict[str, list[tuple[str, str]]] = {
         ("--rate", "Max packets per second"),
     ],
     "web": [
-        ("--port", "HTTP port (default 8080)"),
+        ("--port", "HTTPS port (default 443)"),
         ("--host", "Bind address (default 0.0.0.0)"),
     ],
     "devices": [("--all", "Show all MAC rows instead of identities")],
@@ -185,11 +187,10 @@ class LeethaCompleter:
         # Use _line override (for tests) or readline buffer
         if self._line:
             line = self._line
+        elif readline is not None and hasattr(readline, "get_line_buffer"):
+            line = readline.get_line_buffer()
         else:
-            try:
-                line = readline.get_line_buffer()
-            except AttributeError:
-                line = text
+            line = text
 
         parts = line.lstrip().split()
         # Completing first word (command name)
@@ -229,7 +230,8 @@ class LeethaCompleter:
             else:
                 sys.stdout.write(f"  \033[1;36m{clean}\033[0m\n")
         sys.stdout.flush()
-        readline.redisplay()
+        if readline is not None and hasattr(readline, "redisplay"):
+            readline.redisplay()
 
 
 class LeethaConsole:
@@ -287,16 +289,27 @@ class LeethaConsole:
 
         signal.signal(signal.SIGINT, _sigint_handler)
 
-        # Set up tab completion
-        old_completer = readline.get_completer()
-        old_delims = readline.get_completer_delims()
-        readline.set_completer(self._completer.complete)
-        readline.set_completion_display_matches_hook(self._completer.display_hook)
-        readline.parse_and_bind("tab: complete")
-        readline.set_completer_delims(" \t\n")
-        # Suppress default filename fallback
-        if hasattr(readline, "set_auto_history"):
-            readline.set_auto_history(True)
+        # Set up tab completion. Each attribute is hasattr-guarded because
+        # alternative readline implementations (e.g. pyreadline3 on Windows)
+        # ship a partial API — notably set_completion_display_matches_hook
+        # is absent and must not be called blindly.
+        old_completer = None
+        old_delims = None
+        if readline is not None:
+            if hasattr(readline, "get_completer"):
+                old_completer = readline.get_completer()
+            if hasattr(readline, "get_completer_delims"):
+                old_delims = readline.get_completer_delims()
+            if hasattr(readline, "set_completer"):
+                readline.set_completer(self._completer.complete)
+            if hasattr(readline, "set_completion_display_matches_hook"):
+                readline.set_completion_display_matches_hook(self._completer.display_hook)
+            if hasattr(readline, "parse_and_bind"):
+                readline.parse_and_bind("tab: complete")
+            if hasattr(readline, "set_completer_delims"):
+                readline.set_completer_delims(" \t\n")
+            if hasattr(readline, "set_auto_history"):
+                readline.set_auto_history(True)
 
         # Auto-start capture if interfaces were provided via CLI (-i flag).
         # This happens after sudo re-exec: the user already selected an
@@ -340,21 +353,34 @@ class LeethaConsole:
 
                 await self._dispatch(stripped)
         finally:
-            # Restore default SIGINT so lingering executor threads
-            # don't raise KeyboardInterrupt during shutdown.
-            signal.signal(signal.SIGINT, signal.SIG_DFL)
-            readline.set_completer(old_completer)
-            readline.set_completer_delims(old_delims)
-            readline.set_completion_display_matches_hook(None)
+            # Ignore ALL further SIGINT immediately — must be the very
+            # first thing in the finally block so no KeyboardInterrupt
+            # can fire during cleanup or in atexit handlers.
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            if readline is not None:
+                if hasattr(readline, "set_completer"):
+                    readline.set_completer(old_completer)
+                if hasattr(readline, "set_completer_delims") and old_delims is not None:
+                    readline.set_completer_delims(old_delims)
+                if hasattr(readline, "set_completion_display_matches_hook"):
+                    readline.set_completion_display_matches_hook(None)
             self.console.print("\n  [dim]Goodbye.[/dim]\n")
-            if self.app is not None:
-                await self.app.stop()
-                self.app = None
-            if self.db is not None:
-                await self.db.close()
-            if self._store is not None:
-                await self._store.close()
-                self._store = None
+            try:
+                if self.app is not None:
+                    await self.app.stop()
+                    self.app = None
+                if self.db is not None:
+                    await self.db.close()
+                if self._store is not None:
+                    await self._store.close()
+                    self._store = None
+            except Exception:
+                pass
+            # Force-exit: the input() thread in the default executor
+            # blocks on stdin and cannot be interrupted.  os._exit
+            # bypasses atexit/threading shutdown handlers that would
+            # hang trying to join the blocked thread.
+            os._exit(0)
 
     # Dispatch
 
@@ -514,6 +540,32 @@ class LeethaConsole:
             )
         self.console.print()
 
+        # Remote sensor status
+        self.console.print(
+            "[bold white]Remote Sensors[/bold white]  [dim]─[/dim]  "
+            "[dim]sensor listener on port[/dim] [bold]8443[/bold]"
+        )
+        if self.app and hasattr(self.app, '_remote_sensor_manager'):
+            sensor_count = len(self.app._remote_sensor_manager.sensors)
+            if sensor_count > 0:
+                self.console.print(
+                    f"  [green]\u25cf[/green] [bold]{sensor_count}[/bold] sensor(s) connected  "
+                    "[dim]─[/dim]  [bold cyan]sensors[/bold cyan] [dim]to view details[/dim]"
+                )
+            else:
+                self.console.print(
+                    "  [yellow]\u25cb[/yellow] No sensors connected\n"
+                    "  [dim]To deploy remote sensors:[/dim]\n"
+                    "    [dim]1.[/dim] [bold cyan]start web[/bold cyan]         [dim]Launch the web dashboard[/dim]\n"
+                    "    [dim]2.[/dim] [dim]Go to[/dim] [bold]Adapters > Remote Sensors > Build Sensor[/bold]\n"
+                    "    [dim]3.[/dim] [dim]Configure, build, and deploy the binary to your remote device[/dim]"
+                )
+        else:
+            self.console.print(
+                "  [dim]Sensor listener will start when capture begins[/dim]"
+            )
+        self.console.print()
+
     # Helpers
 
     def _count_synced_sources(self) -> int:
@@ -590,6 +642,7 @@ class LeethaConsole:
     # Group commands by category for the help display
     _HELP_CATEGORIES: list[tuple[str, list[str]]] = [
         ("Capture",    ["list", "use", "start", "stop"]),
+        ("Remote",     ["sensors"]),
         ("Data",       ["sync", "sources", "devices", "alerts"]),
         ("Probing",    ["probe"]),
         ("System",     ["status", "clear", "help", "exit"]),
@@ -933,7 +986,7 @@ class LeethaConsole:
         self._info("Back in console")
 
     async def _cmd_web(self, args: list[str]) -> None:
-        port = 8080
+        port = 443
         host = "0.0.0.0"
 
         if "--port" in args:
@@ -956,14 +1009,40 @@ class LeethaConsole:
                 self._error("[bold]--host[/bold] requires a value")
                 return
 
+        use_tls = "--no-tls" not in args
+
         if not await self._ensure_capture():
             return
 
-        self._info(f"Web dashboard at [bold cyan]http://{host}:{port}[/bold cyan] — [bold]Ctrl+C[/bold] to return")
+        scheme = "https" if use_tls else "http"
+        self._info(f"Web dashboard at [bold cyan]{scheme}://{host}:{port}[/bold cyan] — [bold]Ctrl+C[/bold] to return")
+
+        # Temporarily replace SIGINT: instead of raising KeyboardInterrupt
+        # (which leaves uvicorn in a messy state), set the server's exit flag
+        # so it shuts down cleanly within its own serve loop.
+        _web_server_ref = None
+
+        def _web_sigint(sig, frame):
+            nonlocal _web_server_ref
+            if _web_server_ref is not None:
+                _web_server_ref.should_exit = True
+                _web_server_ref.force_exit = True
+
+        old_handler = signal.getsignal(signal.SIGINT)
         try:
-            await run_web_async(host=host, port=port, app=self.app)
+            from leetha.ui.web.app import _get_last_server
+            signal.signal(signal.SIGINT, _web_sigint)
+            # run_web_async stores the server ref; we grab it after launch
+            task = asyncio.ensure_future(
+                run_web_async(host=host, port=port, app=self.app, tls=use_tls))
+            # Give server a moment to start so we can grab the ref
+            await asyncio.sleep(0.5)
+            _web_server_ref = _get_last_server()
+            await task
         except (KeyboardInterrupt, asyncio.CancelledError):
             pass
+        finally:
+            signal.signal(signal.SIGINT, old_handler)
         self.console.print()
         self._info("Back in console")
 
@@ -986,18 +1065,76 @@ class LeethaConsole:
             return self.app.db
         return self.db
 
+    async def _cmd_sensors(self, args: list[str]) -> None:
+        """List connected remote sensors with stats and discovered interfaces."""
+        if not self.app:
+            self._error("App not started — start capture first")
+            return
+
+        manager = self.app._remote_sensor_manager
+        sensors = manager.list_sensors()
+
+        if not sensors:
+            self._hint("No remote sensors connected")
+            self._hint("Sensors connect on port 8443 — build one from the web UI or use the CLI")
+            return
+
+        self._section("Remote Sensors", f"{len(sensors)} connected")
+
+        table = Table(
+            show_header=True, show_edge=False, pad_edge=True, box=None,
+            expand=True, padding=(0, 1),
+        )
+        table.add_column("Name", style="bold violet", no_wrap=True, min_width=16)
+        table.add_column("Remote IP", style="white", no_wrap=True, width=16)
+        table.add_column("Uptime", style="white", width=10)
+        table.add_column("Packets", justify="right", style="cyan", width=12)
+        table.add_column("Data", justify="right", style="white", width=10)
+        table.add_column("Interfaces", style="dim", min_width=20)
+
+        for s in sensors:
+            uptime_min = int(s["uptime"] / 60)
+            if uptime_min >= 60:
+                uptime_str = f"{uptime_min // 60}h {uptime_min % 60}m"
+            else:
+                uptime_str = f"{uptime_min}m"
+
+            data_mb = s["bytes"] / 1024 / 1024
+            if data_mb >= 1024:
+                data_str = f"{data_mb / 1024:.1f} GB"
+            else:
+                data_str = f"{data_mb:.1f} MB"
+
+            ifaces = s.get("remote_interfaces", [])
+            if ifaces:
+                iface_str = ", ".join(i["name"] for i in ifaces)
+            else:
+                iface_str = "[dim]discovering...[/dim]"
+
+            table.add_row(
+                s["name"],
+                s["remote_ip"],
+                uptime_str,
+                f"{s['packets']:,}",
+                data_str,
+                iface_str,
+            )
+
+        self.console.print(table)
+
     async def _cmd_devices(self, args: list[str]) -> None:
         store = self._active_store
         if not store:
             self._error("Store not initialized")
             return
 
-        verdicts = await store.verdicts.find_all(limit=500)
-        if not verdicts:
+        total = await store.hosts.count()
+        all_hosts = await store.hosts.find_all(limit=total or 500)
+        if not all_hosts:
             self._hint("No devices discovered yet — start a capture first")
             return
 
-        self._section("Discovered Devices", f"{len(verdicts)} hosts")
+        self._section("Discovered Devices", f"{len(all_hosts)} hosts")
 
         table = Table(
             show_header=True, show_edge=False, pad_edge=True, box=None,
@@ -1010,30 +1147,28 @@ class LeethaConsole:
         table.add_column("OS", style="white", width=12)
         table.add_column("Conf", justify="right", width=6)
 
-        for v in verdicts:
-            h = await store.hosts.find_by_addr(v.hw_addr)
-            mac = v.hw_addr
-            ip = h.ip_addr if h else None
-            vendor = v.vendor or "Unknown"
-            category = v.category or "unknown"
-            platform = v.platform or None
-            hostname = v.hostname or None
-            certainty = v.certainty or 0
+        for h in all_hosts:
+            v = await store.verdicts.find_by_addr(h.hw_addr)
+            mac = h.hw_addr
+            ip = h.ip_addr
+            vendor = v.vendor if v else None
+            category = v.category if v else None
+            platform = v.platform if v else None
+            hostname = v.hostname if v else None
+            certainty = v.certainty if v else 0
 
             # Show randomized MAC indicator
             mac_display = mac
-            if h and h.mac_randomized:
+            if h.mac_randomized:
                 mac_display = f"{mac} [magenta]R[/magenta]"
 
-            name = hostname or vendor
-            if name == "Unknown":
-                name = "[dim]—[/dim]"
+            name = hostname or vendor or "[dim]—[/dim]"
 
             table.add_row(
                 name,
                 mac_display,
                 ip or "[dim]—[/dim]",
-                _display_type(category),
+                _display_type(category or "unknown"),
                 platform or "[dim]—[/dim]",
                 self._confidence_bar(certainty),
             )

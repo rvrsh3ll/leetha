@@ -121,7 +121,7 @@ class PacketCapture:
     # Public API
     # ------------------------------------------------------------------
 
-    def activate(self, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop) -> None:
+    def activate(self, queue, loop: asyncio.AbstractEventLoop = None) -> None:
         """Begin sniffing on every registered interface."""
         self._output = queue
         self._event_loop = loop
@@ -129,14 +129,14 @@ class PacketCapture:
             self._spawn_worker(dev_name, cfg)
 
     def shutdown(self) -> None:
-        """Signal all workers to stop and wait for them to finish."""
+        """Signal all workers to stop and wait briefly for them to finish."""
         # raise halt flags first so workers notice promptly
         for flag in self._halt_flags.values():
             flag.set()
         # drop event-loop ref so no further enqueue attempts succeed
         self._event_loop = None
         for worker in self._workers.values():
-            worker.join(timeout=2)
+            worker.join(timeout=0.5)
         self._workers.clear()
         self._halt_flags.clear()
 
@@ -249,17 +249,35 @@ class PacketCapture:
             dev_name, cap_mode, use_promisc, active_bpf,
         )
 
-        try:
-            sniff(
-                iface=dev_name,
-                filter=active_bpf,
-                prn=lambda frame, _dn=dev_name: self._ingest(frame, _dn),
-                stop_filter=lambda _: halt.is_set(),
-                store=0,
-                promisc=use_promisc,
-            )
-        except Exception as exc:
-            log.error("Sniff failure on %s: %s", dev_name, exc)
+        restart_count = 0
+        while not halt.is_set():
+            try:
+                sniff(
+                    iface=dev_name,
+                    filter=active_bpf,
+                    prn=lambda frame, _dn=dev_name: self._ingest(frame, _dn),
+                    stop_filter=lambda _: halt.is_set(),
+                    store=0,
+                    promisc=use_promisc,
+                )
+                # sniff() returned normally (interface down, transient error)
+                if halt.is_set():
+                    break
+                restart_count += 1
+                with open("/tmp/leetha_sniff.txt", "a") as _f:
+                    _f.write(f"sniff exited normally on {dev_name} (restart #{restart_count})\n")
+                import time
+                time.sleep(3)
+            except Exception as exc:
+                if halt.is_set():
+                    break
+                restart_count += 1
+                with open("/tmp/leetha_sniff.txt", "a") as _f:
+                    import traceback
+                    _f.write(f"sniff CRASHED on {dev_name} (restart #{restart_count}): {exc}\n")
+                    _f.write(traceback.format_exc() + "\n")
+                import time
+                time.sleep(3)
 
     # ------------------------------------------------------------------
     # Packet ingestion -- called once per captured frame
@@ -271,6 +289,19 @@ class PacketCapture:
 
         result = self._classify(frame)
         if result is None:
+            # Fallback: extract the source MAC from any Ethernet frame so the
+            # device still appears in the inventory even when no parser matches.
+            hw = getattr(frame, "src", None)
+            if hw and ":" in hw and hw != "00:00:00:00:00:00":
+                from leetha.capture.packets import CapturedPacket
+                result = CapturedPacket(
+                    protocol="unclassified",
+                    hw_addr=hw,
+                    ip_addr="",
+                    fields={"note": "no parser matched"},
+                )
+                result.interface = dev_name
+                self._enqueue(result)
             return
 
         # Suppress duplicate service banners -- only enqueue the first
@@ -369,14 +400,18 @@ class PacketCapture:
     # ------------------------------------------------------------------
 
     def _enqueue(self, item: CapturedPacket) -> None:
-        """Thread-safe push of a parsed packet into the asyncio queue."""
-        loop = self._event_loop
-        if loop is None or not loop.is_running():
+        """Thread-safe push of a parsed packet into the packet queue.
+
+        Uses stdlib queue.Queue which is inherently thread-safe — no need
+        for asyncio event loop bridging. The process thread consumes from
+        this queue directly.
+        """
+        if self._output is None:
             return
         try:
-            asyncio.run_coroutine_threadsafe(self._output.put(item), loop)
-        except RuntimeError:
-            pass  # event loop was closed during shutdown
+            self._output.put_nowait(item)
+        except Exception:
+            pass  # queue full (shouldn't happen with unlimited queue)
 
 
 # Backward-compatible alias so ``from leetha.capture.engine import CaptureEngine``

@@ -83,6 +83,7 @@ async def api_devices(
     raw: bool = False,
 ):
     """Paginated, filtered, sorted device list."""
+    per_page = min(max(per_page, 1), 500)
     _validate_mac, _sanitize_hostname, _build_device_dict = _get_helpers()
     app_instance = _get_app()
 
@@ -93,9 +94,12 @@ async def api_devices(
         interface=interface, confidence_min=confidence_min,
     )
 
-    # Sanitize hostnames
+    # Sanitize hostnames and reject vendor-mismatched forwarded mDNS names
+    from leetha.evidence.hostname import hostname_matches_vendor
     for d in devices:
         d["hostname"] = _sanitize_hostname(d.get("hostname"))
+        if d.get("hostname") and not hostname_matches_vendor(d["hostname"], d.get("manufacturer")):
+            d["hostname"] = None
 
     return {
         "devices": devices,
@@ -124,12 +128,13 @@ async def export_devices(
     _validate_mac, _sanitize_hostname, _build_device_dict = _get_helpers()
     app_instance = _get_app()
 
-    # Build device dicts from verdicts+hosts
-    verdicts = await app_instance.store.verdicts.find_all(limit=10000)
+    # Build device dicts from ALL hosts (including those without verdicts)
+    host_count = await app_instance.store.hosts.count()
+    hosts = await app_instance.store.hosts.find_all(limit=max(host_count, 10000))
     all_devices = []
-    for v in verdicts:
-        h = await app_instance.store.hosts.find_by_addr(v.hw_addr)
-        ovr = await app_instance.store.overrides.find_by_addr(v.hw_addr)
+    for h in hosts:
+        v = await app_instance.store.verdicts.find_by_addr(h.hw_addr)
+        ovr = await app_instance.store.overrides.find_by_addr(h.hw_addr)
         all_devices.append(_build_device_dict(v, h, ovr))
 
     # Apply filters
@@ -229,11 +234,30 @@ async def api_device(mac: str):
     override = await app_instance.store.overrides.find_by_addr(mac)
     device = _build_device_dict(verdict, host, override)
     device["hostname"] = _sanitize_hostname(device.get("hostname"))
+    # Reject forwarded mDNS hostnames that belong to a different vendor
+    from leetha.evidence.hostname import hostname_matches_vendor
+    if device.get("hostname") and not hostname_matches_vendor(device["hostname"], device.get("manufacturer")):
+        device["hostname"] = None
     # Include sightings as observations for compatibility
     try:
         sightings = await app_instance.store.sightings.for_host(mac)
     except Exception:
         sightings = []
+    # Fetch all known IPs from ARP history (multiple VLANs/interfaces)
+    known_ips = []
+    try:
+        arp_history = await app_instance.db.get_arp_history_for_mac(mac)
+        known_ips = [
+            {"ip": e["ip"], "interface": e["interface"],
+             "last_seen": e["last_seen"], "packet_count": e["packet_count"]}
+            for e in arp_history
+        ]
+    except Exception:
+        pass
+
+    if known_ips:
+        device["known_ips"] = known_ips
+
     return {
         "device": device,
         "observations": [
@@ -538,10 +562,18 @@ async def get_device_activity(mac: str):
             "GROUP BY hour ORDER BY hour",
             (mac,))
         rows = await cursor.fetchall()
-        activity = {row[0]: row[1] for row in rows}
+        # Build 24-element array indexed by hour (0-23)
+        counts = [0] * 24
+        for row in rows:
+            try:
+                h = int(row[0])
+                if 0 <= h < 24:
+                    counts[h] = row[1]
+            except (ValueError, IndexError):
+                pass
     except Exception:
-        activity = {}
-    return {"hourly_counts": activity}
+        counts = [0] * 24
+    return {"hourly_counts": counts}
 
 
 @router.get("/api/devices/{mac}/timeline")

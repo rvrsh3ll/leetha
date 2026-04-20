@@ -1,6 +1,6 @@
 """Tests for notification dispatcher."""
+import types
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from leetha.store.models import Finding, FindingRule, AlertSeverity
 
 
@@ -14,25 +14,33 @@ def finding():
     )
 
 
+def _make_fake_apprise():
+    """Create a tracker that records async_notify calls."""
+    calls = []
+    async def fake_notify(**kwargs):
+        calls.append(kwargs)
+    fake = types.SimpleNamespace(async_notify=fake_notify)
+    return fake, calls
+
+
 async def test_notify_skips_below_min_severity(finding):
     """Notifications below min severity are silently skipped."""
     from leetha.notifications import NotificationDispatcher
     d = NotificationDispatcher(urls=["json://localhost"], min_severity="high")
-    with patch("leetha.notifications.apprise") as mock_apprise:
-        await d.send(finding)
-        mock_apprise.Apprise.return_value.async_notify.assert_not_called()
+    fake, calls = _make_fake_apprise()
+    d._apprise = fake
+    await d.send(finding)
+    assert len(calls) == 0
 
 
 async def test_notify_sends_above_min_severity(finding):
     """Findings at or above min severity trigger notification."""
     from leetha.notifications import NotificationDispatcher
     d = NotificationDispatcher(urls=["json://localhost"], min_severity="warning")
-    with patch("leetha.notifications.apprise") as mock_mod:
-        mock_ap = MagicMock()
-        mock_ap.async_notify = AsyncMock(return_value=True)
-        mock_mod.Apprise.return_value = mock_ap
-        await d.send(finding)
-        mock_ap.async_notify.assert_called_once()
+    fake, calls = _make_fake_apprise()
+    d._apprise = fake
+    await d.send(finding)
+    assert len(calls) == 1
 
 
 async def test_notify_skips_when_no_urls():
@@ -52,13 +60,11 @@ async def test_notify_rate_limits(finding):
     """Same rule+MAC within cooldown window is suppressed."""
     from leetha.notifications import NotificationDispatcher
     d = NotificationDispatcher(urls=["json://localhost"], min_severity="info")
-    with patch("leetha.notifications.apprise") as mock_mod:
-        mock_ap = MagicMock()
-        mock_ap.async_notify = AsyncMock(return_value=True)
-        mock_mod.Apprise.return_value = mock_ap
-        await d.send(finding)
-        await d.send(finding)  # duplicate within cooldown
-        assert mock_ap.async_notify.call_count == 1
+    fake, calls = _make_fake_apprise()
+    d._apprise = fake
+    await d.send(finding)
+    await d.send(finding)  # duplicate within cooldown
+    assert len(calls) == 1
 
 
 async def test_format_message(finding):

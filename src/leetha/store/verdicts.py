@@ -1,14 +1,16 @@
 """Verdict repository -- computed host assessments."""
 from __future__ import annotations
 
+import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from leetha.evidence.models import Evidence, Verdict
 
 
 class VerdictRepository:
-    def __init__(self, conn):
+    def __init__(self, conn, write_lock=None):
         self._conn = conn
+        self._mu = write_lock or asyncio.Lock()
 
     async def create_tables(self):
         await self._conn.execute("""
@@ -28,27 +30,28 @@ class VerdictRepository:
         await self._conn.commit()
 
     async def upsert(self, verdict: Verdict) -> None:
-        chain_json = json.dumps([e.to_dict() for e in verdict.evidence_chain])
-        await self._conn.execute("""
-            INSERT INTO verdicts (hw_addr, category, vendor, platform,
-                                  platform_version, model, hostname,
-                                  certainty, evidence_chain, computed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(hw_addr) DO UPDATE SET
-                category = excluded.category,
-                vendor = excluded.vendor,
-                platform = excluded.platform,
-                platform_version = excluded.platform_version,
-                model = excluded.model,
-                hostname = COALESCE(excluded.hostname, verdicts.hostname),
-                certainty = excluded.certainty,
-                evidence_chain = excluded.evidence_chain,
-                computed_at = excluded.computed_at
-        """, (verdict.hw_addr, verdict.category, verdict.vendor,
-              verdict.platform, verdict.platform_version, verdict.model,
-              verdict.hostname, verdict.certainty, chain_json,
-              verdict.computed_at.isoformat()))
-        await self._conn.commit()
+        async with self._mu:
+            chain_json = json.dumps([e.to_dict() for e in verdict.evidence_chain])
+            await self._conn.execute("""
+                INSERT INTO verdicts (hw_addr, category, vendor, platform,
+                                      platform_version, model, hostname,
+                                      certainty, evidence_chain, computed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(hw_addr) DO UPDATE SET
+                    category = excluded.category,
+                    vendor = excluded.vendor,
+                    platform = excluded.platform,
+                    platform_version = excluded.platform_version,
+                    model = excluded.model,
+                    hostname = COALESCE(excluded.hostname, verdicts.hostname),
+                    certainty = excluded.certainty,
+                    evidence_chain = excluded.evidence_chain,
+                    computed_at = excluded.computed_at
+            """, (verdict.hw_addr, verdict.category, verdict.vendor,
+                  verdict.platform, verdict.platform_version, verdict.model,
+                  verdict.hostname, verdict.certainty, chain_json,
+                  verdict.computed_at.isoformat()))
+            await self._conn.commit()
 
     async def find_by_addr(self, hw_addr: str) -> Verdict | None:
         cursor = await self._conn.execute(
@@ -84,20 +87,43 @@ class VerdictRepository:
         Performs a single JOIN between verdicts and hosts instead of N+1 queries.
         Returns (rows, total_count).
         """
-        select = """
-            SELECT v.hw_addr, v.category, v.vendor, v.platform,
+        # Query from hosts LEFT JOIN verdicts so every discovered device
+        # appears even if no verdict has been computed yet.
+        # ip_sort_key: convert dotted-quad IPv4 to a 32-bit integer for
+        # correct numeric sorting (e.g. .2 before .100).
+        _IP_SORT_EXPR = (
+            "CASE WHEN h.ip_addr IS NOT NULL AND INSTR(h.ip_addr, '.') > 0 THEN"
+            "  CAST(SUBSTR(h.ip_addr, 1, INSTR(h.ip_addr, '.') - 1) AS INTEGER) * 16777216"
+            " + CAST(SUBSTR(h.ip_addr, INSTR(h.ip_addr, '.') + 1,"
+            "    INSTR(SUBSTR(h.ip_addr, INSTR(h.ip_addr, '.') + 1), '.') - 1) AS INTEGER) * 65536"
+            " + CAST(SUBSTR(h.ip_addr,"
+            "    INSTR(h.ip_addr, '.') + INSTR(SUBSTR(h.ip_addr, INSTR(h.ip_addr, '.') + 1), '.') + 1,"
+            "    INSTR(SUBSTR(h.ip_addr,"
+            "      INSTR(h.ip_addr, '.') + INSTR(SUBSTR(h.ip_addr, INSTR(h.ip_addr, '.') + 1), '.') + 1"
+            "    ), '.') - 1) AS INTEGER) * 256"
+            " + CAST(SUBSTR(h.ip_addr,"
+            "    INSTR(h.ip_addr, '.') + INSTR(SUBSTR(h.ip_addr, INSTR(h.ip_addr, '.') + 1), '.')"
+            "    + INSTR(SUBSTR(h.ip_addr,"
+            "        INSTR(h.ip_addr, '.') + INSTR(SUBSTR(h.ip_addr, INSTR(h.ip_addr, '.') + 1), '.') + 1"
+            "      ), '.') + 1"
+            "  ) AS INTEGER)"
+            " ELSE 4294967295 END"
+        )
+        select = f"""
+            SELECT h.hw_addr, v.category, v.vendor, v.platform,
                    v.platform_version, v.model, v.hostname, v.certainty,
                    v.evidence_chain,
                    h.ip_addr, h.ip_v6, h.discovered_at, h.last_active,
                    h.mac_randomized, h.real_hw_addr, h.disposition,
-                   h.identity_id
-            FROM verdicts v
-            LEFT JOIN hosts h ON v.hw_addr = h.hw_addr
+                   h.identity_id,
+                   {_IP_SORT_EXPR} AS ip_sort_key
+            FROM hosts h
+            LEFT JOIN verdicts v ON h.hw_addr = v.hw_addr
         """
         count_select = """
             SELECT COUNT(*)
-            FROM verdicts v
-            LEFT JOIN hosts h ON v.hw_addr = h.hw_addr
+            FROM hosts h
+            LEFT JOIN verdicts v ON h.hw_addr = v.hw_addr
         """
 
         conditions: list[str] = []
@@ -105,7 +131,7 @@ class VerdictRepository:
 
         if q:
             conditions.append(
-                "(v.hw_addr LIKE ? OR v.hostname LIKE ? OR v.vendor LIKE ? OR h.ip_addr LIKE ?)"
+                "(h.hw_addr LIKE ? OR v.hostname LIKE ? OR v.vendor LIKE ? OR h.ip_addr LIKE ?)"
             )
             like = f"%{q}%"
             params.extend([like, like, like, like])
@@ -122,11 +148,11 @@ class VerdictRepository:
             conditions.append("h.disposition = ?")
             params.append(alert_status)
         if confidence_min is not None:
-            conditions.append("v.certainty >= ?")
+            conditions.append("COALESCE(v.certainty, 0) >= ?")
             params.append(confidence_min)
         if interface:
             conditions.append(
-                "v.hw_addr IN (SELECT DISTINCT hw_addr FROM sightings WHERE interface = ?)"
+                "h.hw_addr IN (SELECT DISTINCT hw_addr FROM sightings WHERE interface = ?)"
             )
             params.append(interface)
 
@@ -137,13 +163,19 @@ class VerdictRepository:
         sort_col_map = {
             "last_seen": "h.last_active",
             "first_seen": "h.discovered_at",
-            "confidence": "v.certainty",
-            "mac": "v.hw_addr",
+            "confidence": "COALESCE(v.certainty, 0)",
+            "mac": "h.hw_addr",
             "manufacturer": "v.vendor",
             "device_type": "v.category",
             "hostname": "v.hostname",
+            "os_family": "v.platform",
+            "alert_status": "h.disposition",
+            # Sort IPv4 numerically. SQLite CAST('192.168.1.2' AS INTEGER)
+            # only parses the first octet, so we compute a full 32-bit
+            # integer from the four octets for correct ordering.
+            "ip_v4": "ip_sort_key",
         }
-        sort_col = sort_col_map.get(sort, "h.last_active")
+        sort_col = sort_col_map.get(sort, "h.discovered_at")
         sort_dir = "DESC" if order == "desc" else "ASC"
 
         cursor = await self._conn.execute(count_select + where, params)
@@ -163,7 +195,7 @@ class VerdictRepository:
                 "os_family": row["platform"],
                 "os_version": row["platform_version"],
                 "hostname": row["hostname"],
-                "confidence": row["certainty"],
+                "confidence": row["certainty"] or 0,
                 "model": row["model"],
                 "ip_v4": row["ip_addr"],
                 "ip_v6": row["ip_v6"],
@@ -189,6 +221,11 @@ class VerdictRepository:
         chain_data = json.loads(row["evidence_chain"]) if row["evidence_chain"] else []
         evidence_chain = []
         for e in chain_data:
+            observed_at_raw = e.get("observed_at")
+            if observed_at_raw:
+                observed_at = datetime.fromisoformat(observed_at_raw)
+            else:
+                observed_at = datetime.now(timezone.utc)
             evidence_chain.append(Evidence(
                 source=e.get("source", ""),
                 method=e.get("method", ""),
@@ -200,6 +237,7 @@ class VerdictRepository:
                 model=e.get("model"),
                 hostname=e.get("hostname"),
                 raw=e.get("raw", {}),
+                observed_at=observed_at,
             ))
         return Verdict(
             hw_addr=row["hw_addr"],
